@@ -91,11 +91,81 @@ pub fn clone_context_link(context_link: &ContextLink) -> ContextLink {
     return context_link.as_ref().map(|l|{l.clone()})
 }
 
+type Effect = Box<dyn Fn() -> Option<Box<dyn FnOnce() -> ()>>>;
+
+struct EffectStore<Basis: Eq, F: Fn() -> Option<C>, C: FnOnce() -> ()> {
+    effect: F,
+    cleanup: Option<C>,
+    basis: Basis,
+    pending_execution: bool
+}
+
+trait EffectStoreT: Downcast {
+    fn execute(&mut self);
+    fn cleanup(&mut self);
+    fn is_pending(&self) -> bool;
+}
+impl_downcast!(EffectStoreT);
+
+impl<T: Eq + 'static, F: Fn() -> Option<C> + 'static, C: FnOnce() -> () + 'static> EffectStoreT for EffectStore<T, F, C> {
+    fn execute(&mut self) {
+        self.cleanup();
+        self.cleanup = (self.effect)();
+        self.pending_execution = false;
+    }
+    fn cleanup(&mut self) {
+        if let Some(cleanup) = self.cleanup.take() {
+            cleanup();
+        }
+    }
+
+    fn is_pending(&self) -> bool {
+        self.pending_execution
+    }
+}
+
+impl EffectStoreT for () {
+    fn execute(&mut self) {
+        panic!("Should not")
+    }
+    fn cleanup(&mut self) {
+        panic!("Should not")
+    }
+
+    fn is_pending(&self) -> bool {
+        panic!("Should not")
+    }
+}
+
+struct HookList<Hook> {
+    hooks: Vec<Hook>,
+    current_index: usize,
+}
+
+impl<Hook> HookList<Hook> {
+    fn new() -> HookList<Hook> {
+        HookList {
+            hooks: vec![],
+            current_index: 0
+        }
+    }
+
+    fn clear(&mut self) {
+        self.hooks.clear();
+        self.current_index = 0;
+    }
+
+    fn get(&mut self) -> &mut Hook {
+        self.current_index += 1;
+        self.hooks.get_mut(self.current_index - 1).unwrap()
+    }
+}
+
 pub struct Scope {
     pub renderer: Rc<RefCell<dyn Renderer>>,
     pub context_link: ContextLink,
-    hooks: Vec<Rc<dyn Any>>,
-    current_hook_index: usize,
+    storage_hooks: HookList<Rc<dyn Any>>,
+    effect_hooks: HookList<Box<dyn EffectStoreT>>,
     has_init: bool
 }
 
@@ -110,20 +180,21 @@ impl Scope {
         Scope {
             renderer,
             context_link,
-            hooks: vec![],
-            current_hook_index: 0,
+            storage_hooks: HookList::new(),
+            effect_hooks: HookList::new(),
             has_init: false
         }
     }
 
     pub fn reset(&mut self) {
-        self.hooks.clear();
-        self.current_hook_index = 0;
+        self.storage_hooks.clear();
+        self.effect_hooks.clear();
         self.has_init = false;
     }
 
     fn mark_start_render(&mut self) {
-        self.current_hook_index = 0;
+        self.storage_hooks.current_index = 0;
+        self.effect_hooks.current_index = 0;
     }
 
     fn mark_end_render(&mut self) {
@@ -132,22 +203,20 @@ impl Scope {
 
     pub fn use_state<T: 'static>(&mut self, default_value: T) -> Rc<StateHandle<T>> {
         if self.has_init {
-            self.current_hook_index += 1;
-            Rc::downcast::<StateHandle<T>>(self.hooks.get(self.current_hook_index - 1).unwrap().clone()).unwrap()
+            Rc::downcast::<StateHandle<T>>(self.storage_hooks.get().clone()).unwrap()
         } else {
             let handle = Rc::new(StateHandle::new(&self.renderer, default_value));
-            self.hooks.push(handle.clone());
+            self.storage_hooks.hooks.push(handle.clone());
             handle
         }
     }
 
     pub fn use_context<T>(&mut self, context_def: &'static dyn ContextDef<T>) -> Rc<ContextConsumerHandle<T>> {
         if self.has_init {
-            self.current_hook_index += 1;
-            Rc::downcast::<ContextConsumerHandle<T>>(self.hooks.get(self.current_hook_index - 1).unwrap().clone()).unwrap()
+            Rc::downcast::<ContextConsumerHandle<T>>(self.storage_hooks.get().clone()).unwrap()
         } else {
             let handle = Rc::new(self.create_context_handle(context_def));
-            self.hooks.push(handle.clone());
+            self.storage_hooks.hooks.push(handle.clone());
             handle
         }
         
@@ -155,15 +224,51 @@ impl Scope {
 
     pub fn use_ref<T: 'static>(&mut self) -> Rc<RefCell<Option<T>>> {
         if self.has_init {
-            self.current_hook_index += 1;
-            Rc::downcast::<RefCell<Option<T>>>(self.hooks.get(self.current_hook_index - 1).unwrap().clone()).unwrap()
+            Rc::downcast::<RefCell<Option<T>>>(self.storage_hooks.get().clone()).unwrap()
         } else {
             let handle = Rc::new(RefCell::new(None));
-            self.hooks.push(handle.clone());
+            self.storage_hooks.hooks.push(handle.clone());
             handle
         }
     }
-    
+
+    pub fn use_effect<Basis: Eq + 'static, C: FnOnce() -> () + 'static, F: Fn() -> Option<C> + 'static>(&mut self, effect: F, basis: Basis) {
+        if self.has_init {
+            let hook_ref = self.effect_hooks.get();
+            let mut original_effect = std::mem::replace(hook_ref, Box::new(())).downcast::<EffectStore<Basis, F, C>>().ok().unwrap();
+            // web_sys::console::log_1(&JsValue::from(effect.eq(original_effect.effect)));
+            if !basis.eq(&original_effect.basis) {
+                original_effect.effect = effect;
+                original_effect.basis = basis;
+                original_effect.pending_execution = true;
+            }
+            let _ = std::mem::replace(hook_ref, original_effect);
+        } else {
+            self.effect_hooks.hooks.push(Box::new(EffectStore {
+                effect,
+                cleanup: None,
+                basis,
+                pending_execution: true
+            }));
+        }
+    }
+
+    pub fn use_effect_always<C: FnOnce() -> () + 'static, F: Fn() -> Option<C> + 'static>(&mut self, effect: F) {
+        if self.has_init {
+            let hook_ref = self.effect_hooks.get();
+            let mut original_effect = std::mem::replace(hook_ref, Box::new(())).downcast::<EffectStore<Option<()>, F, C>>().ok().unwrap();
+            original_effect.effect = effect;
+            original_effect.pending_execution = true;
+            let _ = std::mem::replace(hook_ref, original_effect);
+        } else {
+            self.effect_hooks.hooks.push(Box::new(EffectStore::<Option<()>, F, C> {
+                effect,
+                cleanup: None,
+                basis: None,
+                pending_execution: true
+            }));
+        }
+    }
 
     fn create_context_handle<T>(&self, context_def: &'static dyn ContextDef<T>) -> ContextConsumerHandle<T> {
         let context_link = &self.context_link;
@@ -181,6 +286,21 @@ impl Scope {
                     phantom: std::marker::PhantomData,
                 }
             }
+        }
+    }
+
+    pub fn execute_effects(&mut self) {
+        for e in self.effect_hooks.hooks.iter_mut() {
+            if e.is_pending() {
+                e.execute();
+            }
+        }
+    }
+
+    pub fn cleanup(&mut self) {
+        let effect_hooks = std::mem::take(&mut self.effect_hooks.hooks);
+        for mut e in effect_hooks.into_iter() {
+            e.cleanup();
         }
     }
 }

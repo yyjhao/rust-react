@@ -32,6 +32,21 @@ impl ComponentDef<VDom> for Def {
         let com_ref = scope.use_ref::<component_2::Ref>();
         let c = com_ref.clone();
 
+        let render_count_ref = scope.use_ref::<usize>();
+
+        scope.use_effect_always(move || {
+            let mut render_count = render_count_ref.borrow_mut();
+            match render_count.as_mut() {
+                Some(count) => *count += 1,
+                None => *render_count = Some(1)
+            }
+            web_sys::console::log_2(&JsValue::from("render count"), &JsValue::from(render_count.unwrap().to_string()));
+
+            Some(|| {
+                web_sys::console::log_1(&JsValue::from("cleanup"));
+            })
+        });
+
         ct(&test_context::DEF, test_context::ContextType {
             // name: String::from(if *updated_val { "a" } else { "b" }),
             name: String::from("context"),

@@ -68,6 +68,7 @@ impl<VNativeNode: 'static> ComponentMount<VNativeNode> {
         } else {
             self.content = Some(Mount::new(render_result, clone_context_link(&self.scope.as_ref().unwrap().context_link), self.native_mount_factory.clone()));
         }
+        self.scope.as_mut().unwrap().execute_effects();
     }
 
     pub fn unmount(&mut self) -> () {
@@ -75,6 +76,7 @@ impl<VNativeNode: 'static> ComponentMount<VNativeNode> {
             content.unmount();
         }
         self.native_mount_factory.clone().on_unmount();
+        self.scope.as_mut().unwrap().cleanup();
         self.scope = None;
         self.content = None;
     }

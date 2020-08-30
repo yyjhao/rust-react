@@ -21,6 +21,13 @@ impl ComponentDef<VDom> for Def2 {
         let content = scope.use_state(String::from("initial"));
         let c = content.clone();
         let some_context = scope.use_context(&test_context::DEF);
+
+        let count = some_context.get().count;
+        scope.use_effect(move || {
+            web_sys::console::log_2(&JsValue::from("context updated"), &JsValue::from(count.to_string()));
+            Some(|| {})
+        }, count);
+
         let input_ref = scope.use_ref();
         *ref_object.borrow_mut() = Some(Ref {
             some_action: Box::new(move || {
