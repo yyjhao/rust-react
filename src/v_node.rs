@@ -1,15 +1,12 @@
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::cell::{RefCell, Ref};
 use std::any::TypeId;
 use wasm_bindgen::prelude::*;
+use std::any::Any;
 
 use downcast_rs::Downcast;
 
 pub type RefObject<T> = Rc<RefCell<Option<T>>>;
-
-pub fn make_ref_object<T>(initial_value: Option<T>) -> RefObject<T> {
-    Rc::new(RefCell::new(initial_value))
-}
 
 pub trait ContextDef<T> {
     fn make_context(&self, initial_value: T) -> ContextStore<T>;
@@ -96,15 +93,79 @@ pub fn clone_context_link(context_link: &ContextLink) -> ContextLink {
 
 pub struct Scope {
     pub renderer: Rc<RefCell<dyn Renderer>>,
-    pub context_link: ContextLink
+    pub context_link: ContextLink,
+    hooks: Vec<Rc<dyn Any>>,
+    current_hook_index: usize,
+    has_init: bool
+}
+
+impl Drop for Scope {
+    fn drop(&mut self) {
+        self.reset();
+    }
 }
 
 impl Scope {
-    pub fn use_state<T>(&self, default_value: T) -> StateHandle<T> {
-        StateHandle::new(&self.renderer, default_value)
+    pub fn new(renderer: Rc<RefCell<dyn Renderer>>, context_link: ContextLink) -> Scope {
+        Scope {
+            renderer,
+            context_link,
+            hooks: vec![],
+            current_hook_index: 0,
+            has_init: false
+        }
     }
 
-    pub fn use_context<T>(&self, context_def: &'static dyn ContextDef<T>) -> ContextConsumerHandle<T> {
+    pub fn reset(&mut self) {
+        self.hooks.clear();
+        self.current_hook_index = 0;
+        self.has_init = false;
+    }
+
+    fn mark_start_render(&mut self) {
+        self.current_hook_index = 0;
+    }
+
+    fn mark_end_render(&mut self) {
+        self.has_init = true;
+    }
+
+    pub fn use_state<T: 'static>(&mut self, default_value: T) -> Rc<StateHandle<T>> {
+        if self.has_init {
+            self.current_hook_index += 1;
+            Rc::downcast::<StateHandle<T>>(self.hooks.get(self.current_hook_index - 1).unwrap().clone()).unwrap()
+        } else {
+            let handle = Rc::new(StateHandle::new(&self.renderer, default_value));
+            self.hooks.push(handle.clone());
+            handle
+        }
+    }
+
+    pub fn use_context<T>(&mut self, context_def: &'static dyn ContextDef<T>) -> Rc<ContextConsumerHandle<T>> {
+        if self.has_init {
+            self.current_hook_index += 1;
+            Rc::downcast::<ContextConsumerHandle<T>>(self.hooks.get(self.current_hook_index - 1).unwrap().clone()).unwrap()
+        } else {
+            let handle = Rc::new(self.create_context_handle(context_def));
+            self.hooks.push(handle.clone());
+            handle
+        }
+        
+    }
+
+    pub fn use_ref<T: 'static>(&mut self) -> Rc<RefCell<Option<T>>> {
+        if self.has_init {
+            self.current_hook_index += 1;
+            Rc::downcast::<RefCell<Option<T>>>(self.hooks.get(self.current_hook_index - 1).unwrap().clone()).unwrap()
+        } else {
+            let handle = Rc::new(RefCell::new(None));
+            self.hooks.push(handle.clone());
+            handle
+        }
+    }
+    
+
+    fn create_context_handle<T>(&self, context_def: &'static dyn ContextDef<T>) -> ContextConsumerHandle<T> {
         let context_link = &self.context_link;
         loop {
             let cl = context_link.as_ref().unwrap();
@@ -125,53 +186,40 @@ impl Scope {
 }
 
 
-pub trait Component<VNativeNode> {
+pub trait ComponentDef<VNativeNode> {
     type Props;
     type Ref;
-    fn def(&self) -> &'static dyn ComponentDef<VNativeNode, Self>;
-    fn render(self: Rc<Self>, props: &Self::Props, self_ref: &RefObject<Self::Ref>) -> VNode<VNativeNode>;
-}
-
-pub trait ComponentDef<VNativeNode, C: Component<VNativeNode>> {
     fn name(&self) -> &'static str;
-    fn make(&self, scope: &mut Scope) -> Rc<C>;
+    fn render(&self, scope: &mut Scope, props: &Self::Props, self_ref: &RefObject<Self::Ref>) -> VNode<VNativeNode>;
 }
 
-pub struct VComponentElement<C, VNativeNode> where C: Component<VNativeNode> + 'static, VNativeNode: 'static {
-    pub component_def: &'static dyn ComponentDef<VNativeNode, C>,
+pub struct VComponentElement<C, VNativeNode> where C: ComponentDef<VNativeNode> + 'static, VNativeNode: 'static {
+    pub component_def: &'static C,
     pub props: C::Props,
     pub ref_object: RefObject<C::Ref>
 }
 
-pub trait ComponentT<VNativeNode>: Downcast {
-}
-impl_downcast!(ComponentT<VNativeNode>);
-
-pub trait VComponentElementT<VNativeNode> {
-    fn make(&self, scope: &mut Scope) -> Rc<dyn ComponentT<VNativeNode>>;
-    fn render(&self, component: Rc<dyn ComponentT<VNativeNode>>) -> VNode<VNativeNode>;
+pub trait VComponentElementT<VNativeNode>: Downcast {
+    fn render(&self, scope: &mut Scope) -> VNode<VNativeNode>;
     fn name(&self) -> &'static str;
-    fn component_compatible(&self, component: &dyn ComponentT<VNativeNode>) -> bool;
+    fn same_component(&self, other: &(dyn VComponentElementT<VNativeNode> + 'static)) -> bool;
 }
+impl_downcast!(VComponentElementT<VNativeNode>);
 
-impl<C: Component<VNativeNode> + 'static, VNativeNode> ComponentT<VNativeNode> for C {
-}
-
-impl<C: Component<VNativeNode>  + 'static, VNativeNode> VComponentElementT<VNativeNode> for VComponentElement<C, VNativeNode> {
-    fn make(&self, scope: &mut Scope) -> Rc<dyn ComponentT<VNativeNode>> {
-        self.component_def.make(scope)
-    }
-
-    fn render(&self, component: Rc<dyn ComponentT<VNativeNode>>) -> VNode<VNativeNode> {
-        component.downcast_rc::<C>().map_err(|_| "Shouldn't happen.").unwrap().render(&self.props, &self.ref_object)
+impl<C: ComponentDef<VNativeNode> + 'static, VNativeNode> VComponentElementT<VNativeNode> for VComponentElement<C, VNativeNode> {
+    fn render(&self, scope: &mut Scope) -> VNode<VNativeNode> {
+        scope.mark_start_render();
+        let result = self.component_def.render(scope, &self.props, &self.ref_object);
+        scope.mark_end_render();
+        result
     }
 
     fn name(&self) -> &'static str {
         self.component_def.name()
     }
 
-    fn component_compatible(&self, component: &dyn ComponentT<VNativeNode>) -> bool {
-        component.downcast_ref::<C>().is_some()
+    fn same_component(&self, other: &(dyn VComponentElementT<VNativeNode> + 'static)) -> bool {
+        other.downcast_ref::<VComponentElement<C, VNativeNode>>().is_some()
     }
 }
 
@@ -219,20 +267,18 @@ pub enum VNode<VNativeNode: 'static> {
 }
 
 impl<VNativeNode> VNode<VNativeNode> {
-    fn component<C>(element: VComponentElement<C, VNativeNode>) -> VNode<VNativeNode> where C: Component<VNativeNode> + 'static, VNativeNode: 'static {
+    fn component<C>(element: VComponentElement<C, VNativeNode>) -> VNode<VNativeNode> where C: ComponentDef<VNativeNode> + 'static, VNativeNode: 'static {
         VNode::Component(Box::new(
             element
         ))
     }
 }
 
-pub fn h<T, C, Props, Ref, VNativeNode>(component_def: &'static T, props: Props, ref_object: RefObject<Ref>) -> VNode<VNativeNode>
+pub fn h<T, VNativeNode>(component_def: &'static T, props: T::Props, ref_object: RefObject<T::Ref>) -> VNode<VNativeNode>
     where
-        C: Component<VNativeNode, Props = Props, Ref = Ref> + 'static + ComponentT<VNativeNode>,
-        T: ComponentDef<VNativeNode, C> + 'static,
-        Props: 'static,
+        T: ComponentDef<VNativeNode> + 'static,
         VNativeNode: 'static {
-    VNode::component(VComponentElement::<C, VNativeNode> {
+    VNode::component(VComponentElement::<T, VNativeNode> {
             component_def,
             props: props,
             ref_object

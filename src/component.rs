@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use crate::v_node::{StateHandle, Scope, Component, ComponentDef, RefObject, h, ct};
+use crate::v_node::{StateHandle, Scope, ComponentDef, RefObject, h, ct};
 use crate::v_dom_node::{VDomNode, hd, t, VDom};
 use crate::component_2;
 use std::rc::Rc;
@@ -10,50 +10,27 @@ pub struct Def {
 
 }
 
-impl ComponentDef<VDom, TestComponent> for Def {
-    fn name(&self) -> &'static str {
-        "Component"
-    }
-
-    fn make(&self, scope: &mut Scope) -> Rc<TestComponent> {
-        TestComponent::new(scope)
-    }
-}
-
-pub static DEF: Def = Def {};
-
-pub struct TestComponent {
-    updated: StateHandle<bool>,
-    com_ref: RefObject<component_2::Ref>
-}
-
 pub struct Props {
     pub num_rows: usize
-}
-
-impl TestComponent {
-    pub fn new(scope: &mut Scope) -> Rc<TestComponent> {
-        Rc::new(TestComponent {
-            updated: scope.use_state(false),
-            com_ref: Rc::new(RefCell::new(None))
-        })
-    }
 }
 
 pub struct Ref {
 
 }
 
-impl Component<VDom> for TestComponent {
+impl ComponentDef<VDom> for Def {
     type Props = Props;
     type Ref = Ref;
-    fn def(&self) -> &'static dyn ComponentDef<VDom, TestComponent> {
-        &DEF
+    fn name(&self) -> &'static str {
+        "Component"
     }
-    fn render(self: Rc<Self>, _props: &Props, _ref_object: &RefObject<Ref>) -> VDomNode {
-        web_sys::console::log(&js_sys::Array::from(&JsValue::from("component 1 render")));
-        let updated_val = self.updated.get();
-        let c = self.clone();
+
+    fn render(&self, scope: &mut Scope, _props: &Props, _ref_object: &RefObject<Ref>) -> VDomNode {
+        let updated = scope.use_state(false);
+        let u = updated.clone();
+        let updated_val = updated.get();
+        let com_ref = scope.use_ref::<component_2::Ref>();
+        let c = com_ref.clone();
 
         ct(&test_context::DEF, test_context::ContextType {
             // name: String::from(if *updated_val { "a" } else { "b" }),
@@ -62,22 +39,22 @@ impl Component<VDom> for TestComponent {
         },
             hd("div", vec![
                 (String::from("click"), Box::new(move |_| {
-                    {let r = c.com_ref.borrow();
+                    {let r = com_ref.borrow();
                     match r.as_ref() {
                         Some(rr) => (rr.some_action)(),
                         None => ()
                     };}
                     let new_val = {
-                        !*c.updated.get()
+                        !*u.get()
                     };
-                    c.updated.request_update(new_val);
+                    u.request_update(new_val);
                 }))
             ], map! {
                 String::from("class") => String::from("component_1")
             }, vec![
                 h(&component_2::DEF, component_2::Props {
 
-                }, self.com_ref.clone()),
+                }, c),
                 t("not context: "),
                 // t(if *updated_val { "a" } else { "b" })
                 t(&updated_val.to_string())
@@ -85,4 +62,6 @@ impl Component<VDom> for TestComponent {
         )
     }
 }
+
+pub static DEF: Def = Def {};
 

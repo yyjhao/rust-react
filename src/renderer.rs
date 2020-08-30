@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use crate::v_node::{VNode, ComponentT, Renderer, Scope, VComponentElementT, VContextT, ContextLink, clone_context_link, ContextNode};
+use crate::v_node::{ComponentDef, VNode, Renderer, Scope, VComponentElementT, VContextT, ContextLink, clone_context_link, ContextNode};
 use std::rc::Rc;
 use std::cell::{RefCell, Ref};
 use std::collections::HashMap;
@@ -16,13 +16,8 @@ pub trait NativeMountFactory<VNativeNode: 'static>: Downcast {
 }
 impl_downcast!(NativeMountFactory<VNativeNode>);
 
-pub struct Mounted<VNativeNode> {
-    root: Rc<dyn ComponentT<VNativeNode>>,
-    scope: Scope
-}
-
 pub struct ComponentMount<VNativeNode: 'static> {
-    mounted: Option<Mounted<VNativeNode>>,
+    scope: Option<Scope>,
     element: Box<dyn VComponentElementT<VNativeNode>>,
     content: Option<Mount<VNativeNode>>,
     native_mount_factory: Rc<dyn NativeMountFactory<VNativeNode>>,
@@ -31,7 +26,7 @@ pub struct ComponentMount<VNativeNode: 'static> {
 impl<VNativeNode: 'static> ComponentMount<VNativeNode> {
     pub fn new(element: Box<dyn VComponentElementT<VNativeNode>>, context_link: ContextLink, native_mount_factory: Rc<dyn NativeMountFactory<VNativeNode>>) -> Rc<RefCell<ComponentMount<VNativeNode>>> {
         let renderer = Rc::new(RefCell::new(ComponentMount {
-            mounted: None,
+            scope: None,
             element,
             content: None,
             native_mount_factory: native_mount_factory.component_native_mount_factory(),
@@ -39,47 +34,39 @@ impl<VNativeNode: 'static> ComponentMount<VNativeNode> {
 
         let r: Rc<RefCell<dyn Renderer>> = renderer.clone();
 
-        let mut scope = Scope {
-            renderer: r,
-            context_link,
-        };
+        let scope = Scope::new(r, context_link);
 
         let r = renderer.clone();
         let mut renderer_mut = r.borrow_mut();
 
-        renderer_mut.mounted = Some(Mounted {
-            root: renderer_mut.element.make(&mut scope),
-            scope: scope
-        });
+        renderer_mut.scope = Some(scope);
         renderer_mut.rerender();
 
         renderer
     }
 
     fn update(&mut self, element: Box<dyn VComponentElementT<VNativeNode>>) {
-        self.element = element;
-        let mounted = self.mounted.take().unwrap();
-        if self.element.component_compatible(mounted.root.as_ref()) {
-            self.mounted = Some(mounted);
+        let mut scope = self.scope.take().unwrap();
+        if element.same_component(self.element.as_ref()) {
+            self.scope = Some(scope);
+            self.element = element;
             self.native_mount_factory.reset_scanner();
             self.rerender()
         } else {
             self.unmount();
-            let mut scope = mounted.scope;
-            self.mounted = Some(Mounted {
-                root: self.element.make(&mut scope),
-                scope
-            });
+            scope.reset();
+            self.element = element;
+            self.scope = Some(scope);
             self.rerender();
         }
     }
 
     fn rerender(&mut self) -> () {
-        let render_result = self.element.render(self.mounted.as_ref().unwrap().root.clone());
+        let render_result = self.element.render(&mut self.scope.as_mut().unwrap());
         if let Some(current_mount) = self.content.take() {
             self.content = Some(current_mount.update(render_result, self.native_mount_factory.clone()))
         } else {
-            self.content = Some(Mount::new(render_result, clone_context_link(&self.mounted.as_ref().unwrap().scope.context_link), self.native_mount_factory.clone()));
+            self.content = Some(Mount::new(render_result, clone_context_link(&self.scope.as_ref().unwrap().context_link), self.native_mount_factory.clone()));
         }
     }
 
@@ -88,7 +75,7 @@ impl<VNativeNode: 'static> ComponentMount<VNativeNode> {
             content.unmount();
         }
         self.native_mount_factory.clone().on_unmount();
-        self.mounted = None;
+        self.scope = None;
         self.content = None;
     }
 }
@@ -208,7 +195,7 @@ impl<VNativeNode> ContextMount<VNativeNode> {
 
 impl<VNativeNode: 'static> Renderer for ComponentMount<VNativeNode> {
     fn on_update(&mut self) -> () {
-        if self.mounted.is_some() {
+        if self.scope.is_some() {
             self.native_mount_factory.reset_scanner();
             self.rerender();
         }
@@ -276,7 +263,7 @@ impl<VNativeNode: 'static> Mount<VNativeNode> {
         match self {
             Mount::Native(native) => clone_context_link(native.borrow().get_context_link()),
             Mount::Fragment(fragment) => clone_context_link(&fragment.context_link),
-            Mount::Component(component) => clone_context_link(&component.borrow().mounted.as_ref().unwrap().scope.context_link),
+            Mount::Component(component) => clone_context_link(&component.borrow().scope.as_ref().unwrap().context_link),
             Mount::Context(context) => Some(context.context_link.clone())
         }
     }
