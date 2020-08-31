@@ -28,6 +28,10 @@ impl ComponentDef<VDom> for Def2 {
             Some(|| {})
         }, count);
 
+        let count_times_2 = scope.use_memo(|count| {
+            count * 2
+        }, count);
+
         let input_ref = scope.use_ref();
         *ref_object.borrow_mut() = Some(Ref {
             some_action: Box::new(move || {

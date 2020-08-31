@@ -137,6 +137,25 @@ impl EffectStoreT for () {
     }
 }
 
+struct MemoStore<F: Fn(&Input) -> Output, Input: 'static + Eq, Output> {
+    factory: F,
+    cached_output: Output,
+    cached_input: Input,
+}
+
+trait MemoStoreT: Downcast {
+
+}
+
+impl<F: Fn(&Input) -> Output + 'static, Input: 'static + Eq, Output: 'static> MemoStoreT for MemoStore<F, Input, Output> {
+
+}
+
+impl MemoStoreT for () {
+
+}
+impl_downcast!(MemoStoreT);
+
 struct HookList<Hook> {
     hooks: Vec<Hook>,
     current_index: usize,
@@ -166,6 +185,7 @@ pub struct Scope {
     pub context_link: ContextLink,
     storage_hooks: HookList<Rc<dyn Any>>,
     effect_hooks: HookList<Box<dyn EffectStoreT>>,
+    memo_hooks: HookList<Box<dyn MemoStoreT>>,
     has_init: bool
 }
 
@@ -182,6 +202,7 @@ impl Scope {
             context_link,
             storage_hooks: HookList::new(),
             effect_hooks: HookList::new(),
+            memo_hooks: HookList::new(),
             has_init: false
         }
     }
@@ -250,6 +271,27 @@ impl Scope {
                 basis,
                 pending_execution: true
             }));
+        }
+    }
+
+    pub fn use_memo<F: Fn(&Input) -> Output + 'static, Input: Eq + 'static, Output: 'static>(&mut self, factory: F, input: Input) -> &Output {
+        if self.has_init {
+            let hook_ref = self.memo_hooks.get();
+            let mut original_memo = std::mem::replace(hook_ref, Box::new(())).downcast::<MemoStore<F, Input, Output>>().ok().unwrap();
+            if original_memo.cached_input != input {
+                original_memo.cached_output = factory(&input);
+                original_memo.factory = factory;
+            }
+            let _ = std::mem::replace(hook_ref, original_memo);
+            &hook_ref.downcast_ref::<MemoStore<F, Input, Output>>().unwrap().cached_output
+        } else {
+            let cached_output = factory(&input);
+            self.memo_hooks.hooks.push(Box::new(MemoStore::<F, Input, Output> {
+                factory,
+                cached_input: input,
+                cached_output
+            }));
+            &self.memo_hooks.hooks.last().unwrap().downcast_ref::<MemoStore<F, Input, Output>>().unwrap().cached_output
         }
     }
 
