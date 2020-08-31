@@ -47,7 +47,28 @@ impl<T> StateHandle<T> {
         }
         self.renderer.borrow_mut().on_update();
     }
+
+    pub fn request_update_map<F: Fn(&T) -> T>(&self, mapper: F) {
+        {
+            let mut s = self.state.borrow_mut();
+            *s = mapper(&s);
+        }
+        self.renderer.borrow_mut().on_update();
+    }
 }
+
+impl<T: Clone> StateHandle<T> {
+    pub fn get_clone(&self) -> T {
+        self.state.borrow().clone()
+    }
+}
+
+impl<T: Copy> StateHandle<T> {
+    pub fn get_copy(&self) -> T {
+        *self.state.borrow()
+    }
+}
+
 
 pub trait Renderer {
     fn on_update(&mut self) -> ();
@@ -90,8 +111,6 @@ pub struct ContextNode {
 pub fn clone_context_link(context_link: &ContextLink) -> ContextLink {
     return context_link.as_ref().map(|l|{l.clone()})
 }
-
-type Effect = Box<dyn Fn() -> Option<Box<dyn FnOnce() -> ()>>>;
 
 struct EffectStore<Basis: Eq, F: Fn() -> Option<C>, C: FnOnce() -> ()> {
     effect: F,

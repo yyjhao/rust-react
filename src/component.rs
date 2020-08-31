@@ -27,8 +27,7 @@ impl ComponentDef<VDom> for Def {
 
     fn render(&self, scope: &mut Scope, _props: &Props, _ref_object: &RefObject<Ref>) -> VDomNode {
         let updated = scope.use_state(false);
-        let u = updated.clone();
-        let updated_val = updated.get();
+        let updated_val = updated.get_copy();
         let com_ref = scope.use_ref::<component_2::Ref>();
         let c = com_ref.clone();
 
@@ -50,7 +49,7 @@ impl ComponentDef<VDom> for Def {
         ct(&test_context::DEF, test_context::ContextType {
             // name: String::from(if *updated_val { "a" } else { "b" }),
             name: String::from("context"),
-            count: if *updated_val { 1 } else { 0 }
+            count: if updated_val { 1 } else { 0 }
         },
             hd("div", vec![
                 (String::from("click"), Box::new(move |_| {
@@ -59,10 +58,7 @@ impl ComponentDef<VDom> for Def {
                         Some(rr) => (rr.some_action)(),
                         None => ()
                     };}
-                    let new_val = {
-                        !*u.get()
-                    };
-                    u.request_update(new_val);
+                    updated.request_update_map(|val| {!val});
                 }))
             ], map! {
                 String::from("class") => String::from("component_1")

@@ -19,7 +19,7 @@ impl ComponentDef<VDom> for Def2 {
 
     fn render(&self, scope: &mut Scope, _props: &Props, ref_object: &RefObject<Ref>) -> VDomNode {
         let content = scope.use_state(String::from("initial"));
-        let c = content.clone();
+        let content_val = content.get_clone();
         let some_context = scope.use_context(&test_context::DEF);
 
         let count = some_context.get().count;
@@ -49,7 +49,7 @@ impl ComponentDef<VDom> for Def2 {
                     content.request_update(event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value());
                 }))
             ], map!{
-                String::from("value") => c.get().clone()
+                String::from("value") => content_val
             }, vec![], Some(input_ref.clone())),
             hdk("div",
                 vec![
