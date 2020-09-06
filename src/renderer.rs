@@ -1,7 +1,6 @@
-use wasm_bindgen::prelude::*;
-use crate::v_node::{ComponentDef, VNode, Renderer, Scope, VComponentElementT, VContextT, ContextLink, clone_context_link, ContextNode};
+use crate::v_node::{VNode, Renderer, Scope, VComponentElementT, VContextT, ContextLink, clone_context_link, ContextNode};
 use std::rc::Rc;
-use std::cell::{RefCell, Ref};
+use std::cell::{RefCell};
 use std::collections::HashMap;
 use downcast_rs::Downcast;
 
@@ -62,6 +61,7 @@ impl<VNativeNode: 'static> ComponentMount<VNativeNode> {
     }
 
     fn rerender(&mut self) -> () {
+        self.scope.as_mut().unwrap().update_flag = false;
         let render_result = self.element.render(&mut self.scope.as_mut().unwrap());
         if let Some(current_mount) = self.content.take() {
             self.content = Some(current_mount.update(render_result, self.native_mount_factory.clone()))
@@ -69,6 +69,7 @@ impl<VNativeNode: 'static> ComponentMount<VNativeNode> {
             self.content = Some(Mount::new(render_result, clone_context_link(&self.scope.as_ref().unwrap().context_link), self.native_mount_factory.clone()));
         }
         self.scope.as_mut().unwrap().execute_effects();
+        self.maybe_update();
     }
 
     pub fn unmount(&mut self) -> () {
@@ -79,6 +80,20 @@ impl<VNativeNode: 'static> ComponentMount<VNativeNode> {
         self.scope.as_mut().unwrap().cleanup();
         self.scope = None;
         self.content = None;
+    }
+
+    pub fn consume_update(&mut self) {
+        match self.scope.as_mut() {
+            Some(scope) => {
+                if scope.update_flag {
+                    self.native_mount_factory.reset_scanner();
+                    self.rerender();
+                }
+            }
+            None => {
+
+            }
+        }
     }
 }
 
@@ -170,9 +185,14 @@ impl<VNativeNode> ContextMount<VNativeNode> {
         if n.def_id() == self.context_link.context_store.borrow().def_id() {
             let children = n.push_value(self.context_link.context_store.clone());
             self.native_mount_factory.reset_scanner();
+            for r in self.context_link.renderers.borrow().iter() {
+                let mut mut_r = r.borrow_mut();
+                mut_r.mark_update();
+            }
             self.rerender(children);
             for r in self.context_link.renderers.borrow().iter() {
-                r.borrow_mut().on_update()
+                let mut mut_r = r.borrow_mut();
+                mut_r.maybe_update();
             }
         } else {
             let node = n.take();
@@ -196,12 +216,17 @@ impl<VNativeNode> ContextMount<VNativeNode> {
 }
 
 impl<VNativeNode: 'static> Renderer for ComponentMount<VNativeNode> {
-    fn on_update(&mut self) -> () {
-        if self.scope.is_some() {
-            self.native_mount_factory.reset_scanner();
-            self.rerender();
-        }
+    fn maybe_update(&mut self) {
+        self.consume_update();
     } 
+
+    fn trigger_update(&mut self, update_func: Box<dyn FnOnce(&mut Scope)>) {
+        update_func(self.scope.as_mut().unwrap());
+    }
+
+    fn mark_update(&mut self) {
+        self.scope.as_mut().unwrap().update_flag = true;
+    }
 }
 
 pub trait NativeMount<VNativeNode> : Downcast {

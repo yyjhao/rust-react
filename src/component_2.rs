@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use crate::v_node::{StateHandle, Scope, ComponentDef, RefObject, ContextConsumerHandle};
+use crate::v_node::{Scope, ComponentDef, RefObject, ContextConsumerHandle};
 use crate::v_dom_node::{VDomNode, hd, VDom, t, hdk};
 use wasm_bindgen::JsCast;
 use std::rc::Rc;
@@ -18,8 +18,7 @@ impl ComponentDef<VDom> for Def2 {
     }
 
     fn render(&self, scope: &mut Scope, _props: &Props, ref_object: &RefObject<Ref>) -> VDomNode {
-        let content = scope.use_state(String::from("initial"));
-        let content_val = content.get_clone();
+        let (content_val, set_content_val) = scope.use_state(String::from("initial"));
         let some_context = scope.use_context(&test_context::DEF);
 
         let count = some_context.get().count;
@@ -45,9 +44,10 @@ impl ComponentDef<VDom> for Def2 {
             },
             vec![
             hd("input", vec![
-                (String::from("input"), Box::new(move |event| {
-                    content.request_update(event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value());
-                }))
+                (String::from("input"), scope.use_callback(Box::new(move |scope, event| {
+                    set_content_val(scope, event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value())
+                    // content.request_update(event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value());
+                })))
             ], map!{
                 String::from("value") => content_val
             }, vec![], Some(input_ref.clone())),

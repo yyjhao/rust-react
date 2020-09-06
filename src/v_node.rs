@@ -1,7 +1,7 @@
+use wasm_bindgen::prelude::*;
 use std::rc::{Rc, Weak};
 use std::cell::{RefCell, Ref};
 use std::any::TypeId;
-use wasm_bindgen::prelude::*;
 use std::any::Any;
 
 use downcast_rs::Downcast;
@@ -24,55 +24,47 @@ impl<T> ContextConsumerHandle<T> {
     }
 }
 
-pub struct StateHandle<T> {
-    state: RefCell<T>,
-    renderer: Rc<RefCell<dyn Renderer>>
+pub struct StateStore<T: Clone + PartialEq + 'static> {
+    value: T,
+    update_func: Rc<dyn Fn(&mut Scope, T)>
 }
 
-impl<T> StateHandle<T> {
-    fn new(this: &Rc<RefCell<dyn Renderer>>, value: T) -> StateHandle<T> {
-        StateHandle {
-            state: RefCell::new(value),
-            renderer: this.clone(),
+impl<T: Clone + PartialEq + 'static> StateStore<T> {
+    fn new(value: T, index: usize) -> StateStore<T> {
+        StateStore {
+            value,
+            update_func: Rc::new(move |scope: &mut Scope, new_value| {
+                scope.update_state(index, new_value)
+            })
         }
     }
 
-    pub fn get(&self) -> std::cell::Ref<T> {
-        self.state.borrow()
+    fn get(&self) -> T {
+        self.value.clone()
     }
 
-    pub fn request_update(&self, new_value: T) {
-        {
-            *self.state.borrow_mut() = new_value;
-        }
-        self.renderer.borrow_mut().on_update();
+    pub fn request_update(&mut self, scope: &mut Scope, new_value: T) {
+        scope.update_flag = new_value == self.value;
+        self.value = new_value;
     }
 
-    pub fn request_update_map<F: Fn(&T) -> T>(&self, mapper: F) {
-        {
-            let mut s = self.state.borrow_mut();
-            *s = mapper(&s);
-        }
-        self.renderer.borrow_mut().on_update();
+    pub fn request_update_map<F: Fn(&T) -> T>(&mut self, scope: &mut Scope, mapper: F) {
+        let new_value = mapper(&self.value);
+        self.request_update(scope, new_value);
     }
 }
-
-impl<T: Clone> StateHandle<T> {
-    pub fn get_clone(&self) -> T {
-        self.state.borrow().clone()
-    }
+pub trait StateStoreT: Downcast {
 }
+impl_downcast!(StateStoreT);
 
-impl<T: Copy> StateHandle<T> {
-    pub fn get_copy(&self) -> T {
-        *self.state.borrow()
-    }
+impl<T: Clone + PartialEq + 'static> StateStoreT for StateStore<T> {
+
 }
-
 
 pub trait Renderer {
-    fn on_update(&mut self) -> ();
-
+    fn mark_update(&mut self);
+    fn maybe_update(&mut self);
+    fn trigger_update(&mut self, update_func: Box<dyn FnOnce(&mut Scope)>);
 }
 
 pub struct ContextStore<T: 'static> {
@@ -200,9 +192,12 @@ impl<Hook> HookList<Hook> {
 }
 
 pub struct Scope {
+    pub update_flag: bool,
     pub renderer: Rc<RefCell<dyn Renderer>>,
     pub context_link: ContextLink,
-    storage_hooks: HookList<Rc<dyn Any>>,
+    callback_store: HookList<Box<dyn CallbackStoreT>>,
+    state_hooks: HookList<Box<dyn StateStoreT>>,
+    ref_hooks: HookList<Rc<dyn Any>>,
     effect_hooks: HookList<Box<dyn EffectStoreT>>,
     memo_hooks: HookList<Box<dyn MemoStoreT>>,
     has_init: bool
@@ -214,12 +209,46 @@ impl Drop for Scope {
     }
 }
 
+pub struct CallbackStore<T> {
+    func: Box<dyn Fn(&mut Scope, T) -> ()>
+}
+pub trait CallbackStoreT: Downcast {
+
+}
+impl_downcast!(CallbackStoreT);
+impl<T: 'static> CallbackStoreT for CallbackStore<T> {
+
+}
+impl CallbackStoreT for () {
+
+}
+
+pub struct CallbackHandle<T> {
+    index: usize,
+    renderer: Rc<RefCell<dyn Renderer>>,
+    phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: 'static> CallbackHandle<T> {
+    pub fn trigger(&self, arg: T) {
+        let index = self.index;
+        let mut renderer = self.renderer.try_borrow_mut().unwrap();
+        renderer.trigger_update(Box::new(move |scope| {
+            scope.trigger_callback(index, arg)
+        }));
+        renderer.maybe_update();
+    }
+}
+
 impl Scope {
     pub fn new(renderer: Rc<RefCell<dyn Renderer>>, context_link: ContextLink) -> Scope {
         Scope {
+            update_flag: false,
             renderer,
             context_link,
-            storage_hooks: HookList::new(),
+            callback_store: HookList::new(),
+            state_hooks: HookList::new(),
+            ref_hooks: HookList::new(),
             effect_hooks: HookList::new(),
             memo_hooks: HookList::new(),
             has_init: false
@@ -227,36 +256,81 @@ impl Scope {
     }
 
     pub fn reset(&mut self) {
-        self.storage_hooks.clear();
+        self.state_hooks.clear();
         self.effect_hooks.clear();
+        self.callback_store.clear();
+        self.memo_hooks.clear();
         self.has_init = false;
     }
 
     fn mark_start_render(&mut self) {
-        self.storage_hooks.current_index = 0;
+        self.state_hooks.current_index = 0;
         self.effect_hooks.current_index = 0;
+        self.ref_hooks.current_index = 0;
+        self.memo_hooks.current_index = 0;
+        self.callback_store.current_index = 0;
     }
 
     fn mark_end_render(&mut self) {
         self.has_init = true;
     }
 
-    pub fn use_state<T: 'static>(&mut self, default_value: T) -> Rc<StateHandle<T>> {
+    pub fn trigger_callback<T: 'static>(&mut self, index: usize, arg: T) {
+        let store = std::mem::replace(&mut self.callback_store.hooks[index], Box::new(())).downcast::<CallbackStore<T>>().ok().unwrap();
+        let callback = &store.func;
+        (callback)(self, arg);
+        self.callback_store.hooks[index] = store;
+    }
+
+    pub fn use_callback<T: 'static>(&mut self, callback: Box<dyn Fn(&mut Scope, T) -> ()>) -> CallbackHandle<T> {
         if self.has_init {
-            Rc::downcast::<StateHandle<T>>(self.storage_hooks.get().clone()).unwrap()
+            let stored_callback = self.callback_store.get();
+            *stored_callback = Box::new(CallbackStore {
+                func: callback
+            });
+            CallbackHandle {
+                index: self.callback_store.current_index - 1,
+                renderer: self.renderer.clone(),
+                phantom: std::marker::PhantomData
+            }
         } else {
-            let handle = Rc::new(StateHandle::new(&self.renderer, default_value));
-            self.storage_hooks.hooks.push(handle.clone());
-            handle
+            self.callback_store.hooks.push(Box::new(CallbackStore {
+                func: callback
+            }));
+            CallbackHandle {
+                index: self.callback_store.hooks.len() - 1,
+                renderer: self.renderer.clone(),
+                phantom: std::marker::PhantomData
+            }
+        }
+    }
+
+    pub fn update_state<T: 'static + PartialEq + Clone>(&mut self, index: usize, new_value: T) {
+        let store = self.state_hooks.hooks.get(index).unwrap().downcast_ref::<StateStore<T>>().unwrap() as *const StateStore<T>;
+        unsafe {
+            let ss = store as *mut StateStore<T>;
+            (*ss).request_update(self, new_value);
+        };
+    }
+
+    pub fn use_state<T: 'static + PartialEq + Clone>(&mut self, default_value: T) -> (T, Rc<dyn Fn(&mut Scope, T)->()>) {
+        if self.has_init {
+            let store = self.state_hooks.get().downcast_ref::<StateStore<T>>().unwrap();
+            (store.get(), store.update_func.clone())
+        } else {
+            let store = StateStore::new(default_value.clone(), self.state_hooks.hooks.len());
+            let update_func = store.update_func.clone();
+            self.state_hooks.hooks.push(Box::new(store));
+            (default_value, update_func)
         }
     }
 
     pub fn use_context<T>(&mut self, context_def: &'static dyn ContextDef<T>) -> Rc<ContextConsumerHandle<T>> {
         if self.has_init {
-            Rc::downcast::<ContextConsumerHandle<T>>(self.storage_hooks.get().clone()).unwrap()
+            Rc::downcast::<ContextConsumerHandle<T>>(self.ref_hooks.get().clone()).unwrap()
         } else {
             let handle = Rc::new(self.create_context_handle(context_def));
-            self.storage_hooks.hooks.push(handle.clone());
+            self.ref_hooks.hooks.push(handle.clone());
             handle
         }
         
@@ -264,10 +338,10 @@ impl Scope {
 
     pub fn use_ref<T: 'static>(&mut self) -> Rc<RefCell<Option<T>>> {
         if self.has_init {
-            Rc::downcast::<RefCell<Option<T>>>(self.storage_hooks.get().clone()).unwrap()
+            Rc::downcast::<RefCell<Option<T>>>(self.ref_hooks.get().clone()).unwrap()
         } else {
             let handle = Rc::new(RefCell::new(None));
-            self.storage_hooks.hooks.push(handle.clone());
+            self.ref_hooks.hooks.push(handle.clone());
             handle
         }
     }
@@ -341,7 +415,9 @@ impl Scope {
                 continue
             }
             if store.downcast_ref::<ContextStore<T>>().is_some() {
+                web_sys::console::log_1(&JsValue::from("asdf"));
                 cl.renderers.borrow_mut().push(self.renderer.clone());
+                web_sys::console::log_1(&JsValue::from("1asdf"));
                 return ContextConsumerHandle {
                     store: store_copy,
                     phantom: std::marker::PhantomData,

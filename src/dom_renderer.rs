@@ -23,7 +23,10 @@ impl DomElementMount {
         let window = web_sys::window().expect("no global `window` exists");
         let document = window.document().expect("should have a document on window");
         let dom_element = document.create_element(&v_element.tag_name).unwrap();
-        let listeners = v_element.listeners.into_iter().map(|(event, listener)| {
+        let listeners = v_element.listeners.into_iter().map(|(event, handle)| {
+            let listener: Box<dyn Fn(web_sys::Event) -> ()> = Box::new(move |event| {
+                handle.trigger(event);
+            });
             (event, Closure::wrap(listener))
         }).collect();
         v_element.ref_object.as_ref().map(|inner| {
@@ -71,7 +74,10 @@ impl DomElementMount {
             self.root_dom_node.remove_attribute(key).unwrap();
         }
         self.attributes = new_node.attributes;
-        self.listeners = new_node.listeners.into_iter().map(|(event, listener)| {
+        self.listeners = new_node.listeners.into_iter().map(|(event, handle)| {
+            let listener: Box<dyn Fn(web_sys::Event) -> ()> = Box::new(move |event| {
+                handle.trigger(event);
+            });
             (event, Closure::wrap(listener))
         }).collect();
         if new_node.ref_object.is_some() {

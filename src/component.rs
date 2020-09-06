@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use crate::v_node::{StateHandle, Scope, ComponentDef, RefObject, h, ct};
+use crate::v_node::{Scope, ComponentDef, RefObject, h, ct};
 use crate::v_dom_node::{VDomNode, hd, t, VDom};
 use crate::component_2;
 use std::rc::Rc;
@@ -26,8 +26,7 @@ impl ComponentDef<VDom> for Def {
     }
 
     fn render(&self, scope: &mut Scope, _props: &Props, _ref_object: &RefObject<Ref>) -> VDomNode {
-        let updated = scope.use_state(false);
-        let updated_val = updated.get_copy();
+        let (updated_val, set_updated_val) = scope.use_state(false);
         let com_ref = scope.use_ref::<component_2::Ref>();
         let c = com_ref.clone();
 
@@ -52,14 +51,14 @@ impl ComponentDef<VDom> for Def {
             count: if updated_val { 1 } else { 0 }
         },
             hd("div", vec![
-                (String::from("click"), Box::new(move |_| {
+                (String::from("click"), scope.use_callback(Box::new(move |scope: &mut Scope, _| {
                     {let r = com_ref.borrow();
                     match r.as_ref() {
                         Some(rr) => (rr.some_action)(),
                         None => ()
                     };}
-                    updated.request_update_map(|val| {!val});
-                }))
+                    set_updated_val(scope, !updated_val);
+                })))
             ], map! {
                 String::from("class") => String::from("component_1")
             }, vec![
