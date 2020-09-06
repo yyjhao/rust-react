@@ -22,7 +22,7 @@ pub fn start() -> () {
     let document = window.document().expect("should have a document on window");
     crate::dom_renderer::mount_dom_component(Box::new(
         crate::v_node::VComponentElement {
-            component_def: &component::DEF,
+            component_def: component::component_def,
             props: component::Props {
                 num_rows: 1
             },

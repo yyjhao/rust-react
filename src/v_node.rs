@@ -44,7 +44,7 @@ impl<T: Clone + PartialEq + 'static> StateStore<T> {
     }
 
     pub fn request_update(&mut self, scope: &mut Scope, new_value: T) {
-        scope.update_flag = new_value == self.value;
+        scope.update_flag = new_value != self.value;
         self.value = new_value;
     }
 
@@ -305,7 +305,7 @@ impl Scope {
         }
     }
 
-    pub fn update_state<T: 'static + PartialEq + Clone>(&mut self, index: usize, new_value: T) {
+    fn update_state<T: 'static + PartialEq + Clone>(&mut self, index: usize, new_value: T) {
         let store = self.state_hooks.hooks.get(index).unwrap().downcast_ref::<StateStore<T>>().unwrap() as *const StateStore<T>;
         unsafe {
             let ss = store as *mut StateStore<T>;
@@ -443,40 +443,33 @@ impl Scope {
 }
 
 
-pub trait ComponentDef<VNativeNode> {
-    type Props;
-    type Ref;
-    fn name(&self) -> &'static str;
-    fn render(&self, scope: &mut Scope, props: &Self::Props, self_ref: &RefObject<Self::Ref>) -> VNode<VNativeNode>;
+pub type ComponentDef<VNativeNode, Props, Ref> = fn(scope: &mut Scope, props: &Props, self_ref: &RefObject<Ref>) -> VNode<VNativeNode>;
+
+pub struct VComponentElement<VNativeNode, Props, Ref> where VNativeNode: 'static {
+    pub component_def: ComponentDef<VNativeNode, Props, Ref>,
+    pub props: Props,
+    pub ref_object: RefObject<Ref>
 }
 
-pub struct VComponentElement<C, VNativeNode> where C: ComponentDef<VNativeNode> + 'static, VNativeNode: 'static {
-    pub component_def: &'static C,
-    pub props: C::Props,
-    pub ref_object: RefObject<C::Ref>
-}
-
-pub trait VComponentElementT<VNativeNode>: Downcast {
+pub trait VComponentElementT<VNativeNode: 'static>: Downcast {
     fn render(&self, scope: &mut Scope) -> VNode<VNativeNode>;
-    fn name(&self) -> &'static str;
     fn same_component(&self, other: &(dyn VComponentElementT<VNativeNode> + 'static)) -> bool;
 }
 impl_downcast!(VComponentElementT<VNativeNode>);
 
-impl<C: ComponentDef<VNativeNode> + 'static, VNativeNode> VComponentElementT<VNativeNode> for VComponentElement<C, VNativeNode> {
+impl<Props: 'static, Ref: 'static, VNativeNode: 'static> VComponentElementT<VNativeNode> for VComponentElement<VNativeNode, Props, Ref> {
     fn render(&self, scope: &mut Scope) -> VNode<VNativeNode> {
         scope.mark_start_render();
-        let result = self.component_def.render(scope, &self.props, &self.ref_object);
+        let result = (self.component_def)(scope, &self.props, &self.ref_object);
         scope.mark_end_render();
         result
     }
 
-    fn name(&self) -> &'static str {
-        self.component_def.name()
-    }
-
     fn same_component(&self, other: &(dyn VComponentElementT<VNativeNode> + 'static)) -> bool {
-        other.downcast_ref::<VComponentElement<C, VNativeNode>>().is_some()
+        match other.downcast_ref::<VComponentElement<VNativeNode, Props, Ref>>() {
+            Some(other_element) => other_element.component_def as usize == self.component_def as usize,
+            None => false
+        }
     }
 }
 
@@ -524,18 +517,17 @@ pub enum VNode<VNativeNode: 'static> {
 }
 
 impl<VNativeNode> VNode<VNativeNode> {
-    fn component<C>(element: VComponentElement<C, VNativeNode>) -> VNode<VNativeNode> where C: ComponentDef<VNativeNode> + 'static, VNativeNode: 'static {
+    fn component<Props: 'static, Ref: 'static>(element: VComponentElement<VNativeNode, Props, Ref>) -> VNode<VNativeNode> where VNativeNode: 'static {
         VNode::Component(Box::new(
             element
         ))
     }
 }
 
-pub fn h<T, VNativeNode>(component_def: &'static T, props: T::Props, ref_object: RefObject<T::Ref>) -> VNode<VNativeNode>
+pub fn h<VNativeNode, Props: 'static, Ref: 'static>(component_def: ComponentDef<VNativeNode, Props, Ref>, props: Props, ref_object: RefObject<Ref>) -> VNode<VNativeNode>
     where
-        T: ComponentDef<VNativeNode> + 'static,
         VNativeNode: 'static {
-    VNode::component(VComponentElement::<T, VNativeNode> {
+    VNode::component(VComponentElement::<VNativeNode, Props, Ref> {
             component_def,
             props: props,
             ref_object

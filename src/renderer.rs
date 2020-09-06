@@ -83,7 +83,7 @@ impl<VNativeNode: 'static> ComponentMount<VNativeNode> {
     }
 
     pub fn consume_update(&mut self) {
-        match self.scope.as_mut() {
+        match self.scope.as_ref() {
             Some(scope) => {
                 if scope.update_flag {
                     self.native_mount_factory.reset_scanner();
