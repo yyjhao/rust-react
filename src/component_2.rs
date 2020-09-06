@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 use crate::v_node::{Scope, ComponentDef, RefObject, ContextConsumerHandle};
-use crate::v_dom_node::{VDomNode, hd, VDom, t, hdk};
+use crate::v_dom_node::{VDomNode, hd, VDom, t, ordered_children, VDomElement};
 use wasm_bindgen::JsCast;
 use std::rc::Rc;
 use crate::test_context;
@@ -22,46 +22,62 @@ pub fn component_def(scope: &mut Scope, _props: &(), ref_object: &RefObject<Ref>
     let input_ref = scope.use_ref();
     *ref_object.borrow_mut() = Some(Ref {
         some_action: Box::new(move || {
-            // web_sys::console::log(&js_sys::Array::from(&JsValue::from(&*ccontent.get())));
-            // web_sys::console::log(&js_sys::Array::from(&JsValue::from(cc.input_ref.borrow().as_ref().unwrap().dyn_ref::<web_sys::HtmlInputElement>().unwrap().value())));
+            // web_sys::console::log(&js_sys::Array::from(&JsValue::from(&content_val)));
         })
     });
-    hd("div", vec![],
-        map!{
-            String::from("class") => String::from("component_2")
+    hd(VDomElement {
+        tag_name: "div", 
+        listeners: vec![],
+        attributes: map!{
+            "class" => String::from("component_2")
         },
-        vec![
-        hd("input", vec![
-            (String::from("input"), scope.use_callback(Box::new(move |scope, event| {
-                set_content_val(scope, event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value())
-                // content.request_update(event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value());
-            })))
-        ], map!{
-            String::from("value") => content_val
-        }, vec![], Some(input_ref.clone())),
-        hdk("div",
-            vec![
-            ],
-            std::collections::HashMap::new(),
-            if some_context.get().count % 2 == 0 {
-                vec![
-                    (String::from("1"), t("a")),
-                    (String::from("2"), t("b")),
-                    (String::from("3"), t("c")),
-                    (String::from("4"), t("d")),
-                    (String::from("5"), t(&some_context.get().count.to_string())),
-                ]
-            } else {
-                vec![
-                    (String::from("5"), t(&some_context.get().count.to_string())),
-                    (String::from("2"), t("b")),
-                    (String::from("3"), t("c")),
-                    (String::from("1"), t("a")),
-                ]                    
-            },
-            None
-        )
-    ], None)
+        style: map! {
+            "background-color" => String::from("green")
+        },
+        children: ordered_children(vec![
+            hd(VDomElement {
+                tag_name: "input",
+                listeners: vec![
+                    (String::from("input"), scope.use_callback(Box::new(move |scope, event| {
+                        set_content_val(scope, event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value())
+                    })))
+                ],
+                attributes: map!{
+                    "value" => content_val
+                },
+                children: ordered_children(vec![]),
+                ref_object: Some(input_ref.clone()),
+                style: map! {
+                    "background-color" => String::from("red")
+                },
+            }),
+            hd(VDomElement {
+                tag_name: "div",
+                listeners: vec![
+                ],
+                attributes: std::collections::HashMap::new(),
+                children: Box::new(VDomNode::Fragment(if some_context.get().count % 2 == 0 {
+                    vec![
+                        (String::from("1"), t("a")),
+                        (String::from("2"), t("b")),
+                        (String::from("3"), t("c")),
+                        (String::from("4"), t("d")),
+                        (String::from("5"), t(&some_context.get().count.to_string())),
+                    ]
+                } else {
+                    vec![
+                        (String::from("5"), t(&some_context.get().count.to_string())),
+                        (String::from("2"), t("b")),
+                        (String::from("3"), t("c")),
+                        (String::from("1"), t("a")),
+                    ]                    
+                })),
+                style:  std::collections::HashMap::new(),
+                ref_object: None
+            })
+        ]),
+        ref_object: None
+    })
 }
 
 pub struct Ref {

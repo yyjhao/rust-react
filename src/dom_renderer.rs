@@ -8,9 +8,10 @@ use std::rc::{Rc, Weak};
 use std::cell::{RefCell, Ref, RefMut};
 
 pub struct DomElementMount {
-    root_dom_node: web_sys::Element,
+    root_dom_node: web_sys::HtmlElement,
     listeners: Vec<(String, wasm_bindgen::closure::Closure<dyn std::ops::Fn(web_sys::Event)>)>,
-    attributes: HashMap<String, String>,
+    style: HashMap<&'static str, String>,
+    attributes: HashMap<&'static str, String>,
     children_mount: Option<Mount<VDom>>,
     dom_factory: Rc<DomMountFactory>,
     parent_dom_factory: Rc<DomMountFactory>,
@@ -22,7 +23,7 @@ impl DomElementMount {
     pub fn new(v_element: VDomElement, context_link: ContextLink, dom_factory: Rc<DomMountFactory>) -> DomElementMount {
         let window = web_sys::window().expect("no global `window` exists");
         let document = window.document().expect("should have a document on window");
-        let dom_element = document.create_element(&v_element.tag_name).unwrap();
+        let dom_element = document.create_element(&v_element.tag_name).unwrap().dyn_into::<web_sys::HtmlElement>().unwrap();
         let listeners = v_element.listeners.into_iter().map(|(event, handle)| {
             let listener: Box<dyn Fn(web_sys::Event) -> ()> = Box::new(move |event| {
                 handle.trigger(event);
@@ -30,10 +31,11 @@ impl DomElementMount {
             (event, Closure::wrap(listener))
         }).collect();
         v_element.ref_object.as_ref().map(|inner| {
-            inner.replace(Some(dom_element.clone().dyn_into::<web_sys::HtmlElement>().unwrap()))
+            inner.replace(Some(dom_element.clone()))
         });
         let mut r = DomElementMount {
             root_dom_node: dom_element.clone(),
+            style: v_element.style,
             listeners,
             children_mount: None,
             attributes: v_element.attributes,
@@ -56,11 +58,13 @@ impl DomElementMount {
             let function = closure.as_ref().unchecked_ref();
             self.root_dom_node.add_event_listener_with_callback(&event, function).unwrap();
         }
+        for (key, value) in self.style.iter() {
+            self.root_dom_node.style().set_property(key, value);
+        }
         for (key, value) in self.attributes.iter() {
-            if key == "value" {
-                self.root_dom_node.dyn_ref::<web_sys::HtmlInputElement>().unwrap().set_value(value);
-            } else {
-                self.root_dom_node.set_attribute(key, value).unwrap();
+            match key {
+                &"value" => self.root_dom_node.dyn_ref::<web_sys::HtmlInputElement>().unwrap().set_value(value),
+                _ => self.root_dom_node.set_attribute(key, value).unwrap()
             }
         }
     }
@@ -72,6 +76,9 @@ impl DomElementMount {
         }
         for (key, _) in self.attributes.iter() {
             self.root_dom_node.remove_attribute(key).unwrap();
+        }
+        for (key, _) in self.style.iter() {
+            self.root_dom_node.style().remove_property(key).unwrap();
         }
         self.attributes = new_node.attributes;
         self.listeners = new_node.listeners.into_iter().map(|(event, handle)| {
@@ -198,14 +205,14 @@ enum DomChildren {
 }
 
 pub struct DomMountFactory {
-    parent_dom_node: web_sys::Element,
+    parent_dom_node: web_sys::HtmlElement,
     dom_children: RefCell<Vec<DomChildren>>,
     current_index: RefCell<usize>,
     parent: Weak<DomMountFactory>
 }
 
 impl DomMountFactory {
-    fn new(parent_dom_node: web_sys::Element) -> DomMountFactory {
+    fn new(parent_dom_node: web_sys::HtmlElement) -> DomMountFactory {
         DomMountFactory {
             parent_dom_node,
             dom_children: RefCell::new(vec![]),
@@ -440,7 +447,7 @@ impl NativeMountFactory<VDom> for DomMountFactory {
     }
 }
 
-pub fn mount_dom_component(element: Box<dyn VComponentElementT<VDom>>, root_dom_node: web_sys::Element) {
+pub fn mount_dom_component(element: Box<dyn VComponentElementT<VDom>>, root_dom_node: web_sys::HtmlElement) {
     let factory = DomMountFactory::new(root_dom_node);
     ComponentMount::new(element, None, Rc::new(factory));
 }

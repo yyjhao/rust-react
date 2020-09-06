@@ -5,9 +5,10 @@ pub type VDomNode = VNode<VDom>;
 pub type Listener = (String, CallbackHandle<web_sys::Event>);
 
 pub struct VDomElement {
-    pub tag_name: String,
+    pub tag_name: &'static str,
     pub listeners: Vec<Listener>,
-    pub attributes: HashMap<String, String>,
+    pub attributes: HashMap<&'static str, String>,
+    pub style: HashMap<&'static str, String>,
     pub children: Box<VDomNode>,
     pub ref_object: Option<RefObject<web_sys::HtmlElement>>
 }
@@ -29,20 +30,15 @@ macro_rules! map(
      };
 );
 
-pub fn hd(tag_name: &str, listeners: Vec<Listener>, attributes: HashMap<String, String>, children: Vec<VDomNode>, ref_object: Option<RefObject<web_sys::HtmlElement>>) -> VDomNode {
-    hdk(tag_name, listeners, attributes, children.into_iter().enumerate().map(|(index, c)| {
+pub fn ordered_children(children: Vec<VDomNode>) -> Box<VDomNode> {
+    Box::new(VDomNode::Fragment(children.into_iter().enumerate().map(|(index, c)| {
         (index.to_string(), c)
-    }).collect(), ref_object)
+    }).collect()))
 }
 
-pub fn hdk(tag_name: &str, listeners: Vec<Listener>, attributes: HashMap<String, String>, children: Vec<(String, VDomNode)>, ref_object: Option<RefObject<web_sys::HtmlElement>>) -> VDomNode {
-    VDomNode::Native(VDom::Element(VDomElement {
-        tag_name: String::from(tag_name),
-        listeners,
-        attributes,
-        children: Box::new(VDomNode::Fragment(children)),
-        ref_object
-    }))
+
+pub fn hd(element: VDomElement) -> VDomNode {
+    VDomNode::Native(VDom::Element(element))
 }
 
 pub fn t(s: &str)-> VDomNode {

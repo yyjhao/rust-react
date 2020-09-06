@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 use crate::v_node::{Scope, ComponentDef, RefObject, h, ct};
-use crate::v_dom_node::{VDomNode, hd, t, VDom};
+use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
 use crate::component_2;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -39,23 +39,32 @@ pub fn component_def(scope: &mut Scope, _props: &Props, _ref_object: &RefObject<
         name: String::from("context"),
         count: if updated_val { 1 } else { 0 }
     },
-        hd("div", vec![
-            (String::from("click"), scope.use_callback(Box::new(move |scope: &mut Scope, _| {
-                {let r = com_ref.borrow();
-                match r.as_ref() {
-                    Some(rr) => (rr.some_action)(),
-                    None => ()
-                };}
-                set_updated_val(scope, !updated_val);
-            })))
-        ], map! {
-            String::from("class") => String::from("component_1")
-        }, vec![
-            h(component_2::component_def, (), c),
-            t("not context: "),
-            // t(if *updated_val { "a" } else { "b" })
-            t(&updated_val.to_string())
-        ], None)
+        hd(VDomElement {
+            tag_name: "div",
+            listeners: vec![
+                (String::from("click"), scope.use_callback(Box::new(move |scope: &mut Scope, _| {
+                    {let r = com_ref.borrow();
+                    match r.as_ref() {
+                        Some(rr) => (rr.some_action)(),
+                        None => ()
+                    };}
+                    set_updated_val(scope, !updated_val);
+                })))
+            ],
+            attributes: map! {
+                "class" => String::from("component_1")
+            },
+            style: map! {
+                "color" => String::from("blue")
+            },
+            children: ordered_children(vec![
+                h(component_2::component_def, (), c),
+                t("not context: "),
+                t(if updated_val { "a" } else { "b" }),
+                t(&updated_val.to_string())
+            ]),
+            ref_object: None
+        })
     )
 }
 

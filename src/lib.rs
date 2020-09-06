@@ -28,7 +28,7 @@ pub fn start() -> () {
             },
             ref_object: std::rc::Rc::new(RefCell::new(None))
         }
-    ), document.body().unwrap().query_selector("#mount").unwrap().unwrap().dyn_into::<web_sys::Element>().unwrap());
+    ), document.body().unwrap().query_selector("#mount").unwrap().unwrap().dyn_into::<web_sys::HtmlElement>().unwrap());
     // let renderer = component_renderer::ComponentRenderer::mount(document.body().unwrap().dyn_into::<web_sys::Element>().unwrap(), &component_2::testComponentDef, component_2::Props {
     // });
 
