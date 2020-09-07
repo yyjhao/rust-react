@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 use crate::v_node::{Scope, ComponentDef, RefObject, h, ct};
 use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
-use crate::component_2;
+use crate::components::component_2;
 use std::rc::Rc;
 use std::cell::RefCell;
 use crate::test_context;
@@ -22,7 +22,7 @@ pub fn component_def(scope: &mut Scope, _props: &Props, _ref_object: &RefObject<
     let render_count_ref = scope.use_ref::<usize>();
 
     scope.use_effect_always(move || {
-        let mut render_count = render_count_ref.borrow_mut();
+        let mut render_count = render_count_ref.try_borrow_mut().unwrap();
         match render_count.as_mut() {
             Some(count) => *count += 1,
             None => *render_count = Some(1)
@@ -42,8 +42,8 @@ pub fn component_def(scope: &mut Scope, _props: &Props, _ref_object: &RefObject<
         hd(VDomElement {
             tag_name: "div",
             listeners: vec![
-                (String::from("click"), scope.use_callback(Box::new(move |scope: &mut Scope, _| {
-                    {let r = com_ref.borrow();
+                ("click", scope.use_callback(Box::new(move |scope: &mut Scope, _| {
+                    {let r = com_ref.try_borrow().unwrap();
                     match r.as_ref() {
                         Some(rr) => (rr.some_action)(),
                         None => ()

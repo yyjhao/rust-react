@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 use std::collections::HashMap;
 use crate::v_dom_node::{VDomNode, VDomElement, VDom};
-use crate::v_node::{VComponentElementT, RefObject, ContextLink, clone_context_link};
+use crate::v_node::{VComponentElementT, RefObject, ContextLink, clone_context_link, Updater};
 use crate::renderer::{NativeMount, ComponentMount, NativeMountFactory, Mount};
 use wasm_bindgen::JsCast;
 use std::rc::{Rc, Weak};
@@ -9,7 +9,8 @@ use std::cell::{RefCell, Ref, RefMut};
 
 pub struct DomElementMount {
     root_dom_node: web_sys::HtmlElement,
-    listeners: Vec<(String, wasm_bindgen::closure::Closure<dyn std::ops::Fn(web_sys::Event)>)>,
+    updater: Rc<RefCell<Updater>>,
+    listeners: Vec<(&'static str, wasm_bindgen::closure::Closure<dyn std::ops::Fn(web_sys::Event)>)>,
     style: HashMap<&'static str, String>,
     attributes: HashMap<&'static str, String>,
     children_mount: Option<Mount<VDom>>,
@@ -20,7 +21,7 @@ pub struct DomElementMount {
 }
 
 impl DomElementMount {
-    pub fn new(v_element: VDomElement, context_link: ContextLink, dom_factory: Rc<DomMountFactory>) -> DomElementMount {
+    pub fn new(v_element: VDomElement, context_link: ContextLink, dom_factory: Rc<DomMountFactory>, updater: Rc<RefCell<Updater>>) -> DomElementMount {
         let window = web_sys::window().expect("no global `window` exists");
         let document = window.document().expect("should have a document on window");
         let dom_element = document.create_element(&v_element.tag_name).unwrap().dyn_into::<web_sys::HtmlElement>().unwrap();
@@ -34,6 +35,7 @@ impl DomElementMount {
             inner.replace(Some(dom_element.clone()))
         });
         let mut r = DomElementMount {
+            updater,
             root_dom_node: dom_element.clone(),
             style: v_element.style,
             listeners,
@@ -50,16 +52,16 @@ impl DomElementMount {
 
     fn rerender(&mut self, children: VDomNode) {
         self.children_mount = Some(if let Some(children_mount) = self.children_mount.take() {
-            children_mount.update(children, self.dom_factory.clone())
+            children_mount.update(children, self.dom_factory.clone(), self.updater.clone())
         } else {
-            Mount::new(children, clone_context_link(&self.context_link), self.dom_factory.clone())
+            Mount::new(children, clone_context_link(&self.context_link), self.dom_factory.clone(), self.updater.clone())
         });
         for (event, closure) in self.listeners.iter() {
             let function = closure.as_ref().unchecked_ref();
             self.root_dom_node.add_event_listener_with_callback(&event, function).unwrap();
         }
         for (key, value) in self.style.iter() {
-            self.root_dom_node.style().set_property(key, value);
+            self.root_dom_node.style().set_property(key, value).unwrap();
         }
         for (key, value) in self.attributes.iter() {
             match key {
@@ -148,9 +150,9 @@ enum DomMount {
 }
 
 impl DomMount{
-    fn new(vnode: VDom, context_link: ContextLink, dom_mount_factory: Rc<DomMountFactory>) -> DomMount {
+    fn new(vnode: VDom, context_link: ContextLink, dom_mount_factory: Rc<DomMountFactory>, updater: Rc<RefCell<Updater>>) -> DomMount {
         match vnode {
-            VDom::Element(v_element) => DomMount::Element(DomElementMount::new(v_element, context_link, dom_mount_factory)),
+            VDom::Element(v_element) => DomMount::Element(DomElementMount::new(v_element, context_link, dom_mount_factory, updater)),
             VDom::Text(v_text) => DomMount::Text(DomTextMount::new(v_text, context_link, dom_mount_factory))
         }
     }
@@ -166,7 +168,7 @@ impl DomMount{
 
 
 impl NativeMount<VDom> for DomMount {
-    fn update(&mut self, new_node: VDom, dom_mount_factory: Rc<dyn NativeMountFactory<VDom>>) {
+    fn update(&mut self, new_node: VDom, dom_mount_factory: Rc<dyn NativeMountFactory<VDom>>, updater: Rc<RefCell<Updater>>) {
         *self = match (std::mem::replace(self, DomMount::None), new_node) {
             (DomMount::Element(mut element), VDom::Element(v_element)) => {
                 element.update(v_element);
@@ -178,7 +180,7 @@ impl NativeMount<VDom> for DomMount {
             }
             (mut m, vnode) => {
                 m.unmount();
-                DomMount::new(vnode, clone_context_link(self.get_context_link()), dom_mount_factory.downcast_rc::<DomMountFactory>().ok().unwrap())
+                DomMount::new(vnode, clone_context_link(self.get_context_link()), dom_mount_factory.downcast_rc::<DomMountFactory>().ok().unwrap(), updater)
             }
         }
     }
@@ -222,8 +224,8 @@ impl DomMountFactory {
     }
 
     fn remove_dom_child(&self, dom_node: web_sys::Node) {
-        let mut dom_children = self.dom_children.borrow_mut();
-        let current_index = *{self.current_index.borrow()};
+        let mut dom_children = self.dom_children.try_borrow_mut().unwrap();
+        let current_index = *{self.current_index.try_borrow().unwrap()};
         let pos = dom_children.iter().position(|child| {
             if let DomChildren::Dom(node) = child {
                 node == &dom_node
@@ -233,13 +235,13 @@ impl DomMountFactory {
         }).unwrap();
         dom_children.remove(pos);
         if pos < current_index {
-            *self.current_index.borrow_mut() -= 1;
+            *self.current_index.try_borrow_mut().unwrap() -= 1;
         }
     }
 
     fn remove_component_child(&self, dom_factory: Rc<DomMountFactory>) {
-        let mut dom_children = self.dom_children.borrow_mut();
-        let current_index = *{self.current_index.borrow()};
+        let mut dom_children = self.dom_children.try_borrow_mut().unwrap();
+        let current_index = *{self.current_index.try_borrow().unwrap()};
         let pos = dom_children.iter().position(|child| {
             if let DomChildren::Component(factory) = child {
                 Rc::as_ptr(factory) == Rc::as_ptr(&dom_factory)
@@ -249,12 +251,12 @@ impl DomMountFactory {
         }).unwrap();
         dom_children.remove(pos);
         if pos < current_index {
-            *self.current_index.borrow_mut() -= 1;
+            *self.current_index.try_borrow_mut().unwrap() -= 1;
         }
     }
 
     fn get_dom_at(&self, index: usize) -> Option<web_sys::Node> {
-        let dom_children = self.dom_children.borrow();
+        let dom_children = self.dom_children.try_borrow().unwrap();
         for child in dom_children[index..dom_children.len()].iter() {
             match child {
                 DomChildren::Dom(dom) => {
@@ -273,7 +275,7 @@ impl DomMountFactory {
     }
 
     fn get_first_dom_after(&self, child: &DomMountFactory) -> Option<web_sys::Node> {
-        let dom_children = self.dom_children.borrow();
+        let dom_children = self.dom_children.try_borrow().unwrap();
         let next_child_pos = dom_children.iter().position(|c| {
             if let DomChildren::Component(component) = c {
                 Rc::as_ptr(component) == child
@@ -290,7 +292,7 @@ impl DomMountFactory {
     }
 
     fn get_first_dom(&self) -> Option<web_sys::Node> {
-        let dom_children = self.dom_children.borrow();
+        let dom_children = self.dom_children.try_borrow().unwrap();
         for child in dom_children.iter() {
             match child {
                 DomChildren::Dom(dom) => {
@@ -367,22 +369,22 @@ impl NativeMountFactory<VDom> for DomMountFactory {
     }
 
     fn reset_scanner(&self) {
-        *self.current_index.borrow_mut() = 0;
+        *self.current_index.try_borrow_mut().unwrap() = 0;
     }
 
-    fn make_native_mount(self: Rc<Self>, vdom: VDom, context_link: ContextLink)-> Rc<RefCell<dyn NativeMount<VDom>>> {
-        let mount = DomMount::new(vdom, context_link, self.clone());
+    fn make_native_mount(self: Rc<Self>, vdom: VDom, context_link: ContextLink, updater: Rc<RefCell<Updater>>)-> Rc<RefCell<dyn NativeMount<VDom>>> {
+        let mount = DomMount::new(vdom, context_link, self.clone(), updater);
         let index = *{
-            self.current_index.borrow()
+            self.current_index.try_borrow().unwrap()
         };
-        self.insert_at(self.dom_children.borrow_mut(), index, mount.get_dom_node().clone());
-        *self.current_index.borrow_mut() += 1;
+        self.insert_at(self.dom_children.try_borrow_mut().unwrap(), index, mount.get_dom_node().clone());
+        *self.current_index.try_borrow_mut().unwrap() += 1;
         Rc::new(RefCell::new(mount))
     }
 
     fn maybe_update_component_mount_sequence(&self, factory: Rc<dyn NativeMountFactory<VDom>>) {
-        let dom_children = self.dom_children.borrow_mut();
-        let current_index = * {self.current_index.borrow()};
+        let dom_children = self.dom_children.try_borrow_mut().unwrap();
+        let current_index = * {self.current_index.try_borrow().unwrap()};
         let dom_factory = factory.downcast_rc::<DomMountFactory>().ok().unwrap();
         let maybe_current_child = dom_children.get(current_index);
         match maybe_current_child {
@@ -400,13 +402,13 @@ impl NativeMountFactory<VDom> for DomMountFactory {
                 self.insert_dom_factory_at(dom_children, current_index, dom_factory);
             }
         }
-        *self.current_index.borrow_mut() += 1;
+        *self.current_index.try_borrow_mut().unwrap() += 1;
     }
 
     fn maybe_update_native_mount_sequence(&self, mount: Rc<RefCell<dyn NativeMount<VDom>>>) {
-        let dom_children = self.dom_children.borrow_mut();
-        let current_index = * {self.current_index.borrow()};
-        let mount_dom = Ref::map(mount.borrow(), |mount| { mount.downcast_ref::<DomMount>().unwrap().get_dom_node() });
+        let dom_children = self.dom_children.try_borrow_mut().unwrap();
+        let current_index = * {self.current_index.try_borrow().unwrap()};
+        let mount_dom = Ref::map(mount.try_borrow().unwrap(), |mount| { mount.downcast_ref::<DomMount>().unwrap().get_dom_node() });
         web_sys::console::log_3(&JsValue::from("maybe_update_native_mount_sequence"), &JsValue::from(current_index.to_string()), &JsValue::from(&*mount_dom));
         let maybe_current_child = dom_children.get(current_index);
         match maybe_current_child {
@@ -425,7 +427,7 @@ impl NativeMountFactory<VDom> for DomMountFactory {
                 self.insert_at(dom_children, current_index, mount_dom.clone())
             }
         }
-        *self.current_index.borrow_mut() += 1;
+        *self.current_index.try_borrow_mut().unwrap() += 1;
     }
 
     fn component_native_mount_factory(self: Rc<Self>) -> Rc<dyn NativeMountFactory<VDom>> {
@@ -437,17 +439,17 @@ impl NativeMountFactory<VDom> for DomMountFactory {
         });
 
         let index = {
-            *self.current_index.borrow()
+            *self.current_index.try_borrow().unwrap()
         };
         web_sys::console::log_2(&JsValue::from("component_native_mount_factory"), &JsValue::from(index.to_string()));
-        self.insert_dom_factory_at(self.dom_children.borrow_mut(), index, result.clone());
-        *self.current_index.borrow_mut() += 1;
+        self.insert_dom_factory_at(self.dom_children.try_borrow_mut().unwrap(), index, result.clone());
+        *self.current_index.try_borrow_mut().unwrap() += 1;
 
         result
     }
 }
 
-pub fn mount_dom_component(element: Box<dyn VComponentElementT<VDom>>, root_dom_node: web_sys::HtmlElement) {
+pub fn mount_dom_component(element: Box<dyn VComponentElementT<VDom>>, root_dom_node: web_sys::HtmlElement, updater: Rc<RefCell<Updater>>) {
     let factory = DomMountFactory::new(root_dom_node);
-    ComponentMount::new(element, None, Rc::new(factory));
+    ComponentMount::new(element, None, Rc::new(factory), updater);
 }

@@ -6,6 +6,39 @@ use std::any::Any;
 
 use downcast_rs::Downcast;
 
+pub struct Updater {
+    dirty_renderer: Vec<Weak<RefCell<dyn Renderer>>>,
+}
+
+impl Updater {
+    pub fn new() -> Updater {
+        Updater {
+            dirty_renderer: vec![]
+        }
+    }
+
+    pub fn mark_update(&mut self, renderer: &Rc<RefCell<dyn Renderer>>) -> usize {
+        self.dirty_renderer.push(Rc::downgrade(renderer));
+        self.dirty_renderer.len()
+    }
+
+    pub fn commit_update(&mut self, token: usize) {
+        if token == 1 {
+            let dirty_renderer = std::mem::replace(&mut self.dirty_renderer, vec![]);
+            let mut unwrapped: Vec<Rc<RefCell<dyn Renderer>>> = dirty_renderer.into_iter().filter_map(|r| {
+                r.upgrade()
+            }).collect();
+            unwrapped.dedup_by(|r1, r2| {
+                std::ptr::eq(r1.as_ref(), r2.as_ref())
+            });
+            for r in unwrapped.into_iter() {
+                let mut mut_r = r.try_borrow_mut().unwrap();
+                mut_r.maybe_update();
+            }
+        }
+    }
+}
+
 pub type RefObject<T> = Rc<RefCell<Option<T>>>;
 
 pub trait ContextDef<T> {
@@ -20,7 +53,7 @@ pub struct ContextConsumerHandle<T: 'static> {
 
 impl<T> ContextConsumerHandle<T> {
     pub fn get(&self) -> Ref<T> {
-        Ref::map(self.store.borrow(), |s| {&s.downcast_ref::<ContextStore<T>>().unwrap().value})
+        Ref::map(self.store.try_borrow().unwrap(), |s| {&s.downcast_ref::<ContextStore<T>>().unwrap().value})
     }
 }
 
@@ -62,9 +95,9 @@ impl<T: Clone + PartialEq + 'static> StateStoreT for StateStore<T> {
 }
 
 pub trait Renderer {
-    fn mark_update(&mut self);
     fn maybe_update(&mut self);
-    fn trigger_update(&mut self, update_func: Box<dyn FnOnce(&mut Scope)>);
+    fn scope_mut(&mut self) -> &mut Scope;
+    fn updater(&self) -> Rc<RefCell<Updater>>;
 }
 
 pub struct ContextStore<T: 'static> {
@@ -223,20 +256,38 @@ impl CallbackStoreT for () {
 
 }
 
+#[derive(Clone)]
 pub struct CallbackHandle<T> {
     index: usize,
     renderer: Rc<RefCell<dyn Renderer>>,
     phantom: std::marker::PhantomData<T>,
 }
 
+pub fn update<T: FnOnce(&mut Scope)>(renderer: &Rc<RefCell<dyn Renderer>>, update_func: T) {
+    let token = {
+        let mut renderer_mut = renderer.try_borrow_mut().unwrap();
+        let result = {
+            let u_mut = renderer_mut.updater();
+            let mut updater = u_mut.try_borrow_mut().unwrap();
+            updater.mark_update(&renderer)
+        };
+        let scope = renderer_mut.scope_mut();
+        update_func(scope);
+        result
+    };
+    let updater = {
+        let renderer_ref = renderer.try_borrow().unwrap();
+        renderer_ref.updater().clone()
+    };
+    updater.try_borrow_mut().unwrap().commit_update(token);
+}
+
 impl<T: 'static> CallbackHandle<T> {
     pub fn trigger(&self, arg: T) {
         let index = self.index;
-        let mut renderer = self.renderer.try_borrow_mut().unwrap();
-        renderer.trigger_update(Box::new(move |scope| {
+        update(&self.renderer, move |scope| {
             scope.trigger_callback(index, arg)
-        }));
-        renderer.maybe_update();
+        });
     }
 }
 
@@ -410,13 +461,13 @@ impl Scope {
         loop {
             let cl = context_link.as_ref().unwrap();
             let store_copy = cl.context_store.clone();
-            let store = cl.context_store.borrow();
+            let store = cl.context_store.try_borrow().unwrap();
             if store.def_id() != context_def.def_id() {
                 continue
             }
             if store.downcast_ref::<ContextStore<T>>().is_some() {
                 web_sys::console::log_1(&JsValue::from("asdf"));
-                cl.renderers.borrow_mut().push(self.renderer.clone());
+                cl.renderers.try_borrow_mut().unwrap().push(self.renderer.clone());
                 web_sys::console::log_1(&JsValue::from("1asdf"));
                 return ContextConsumerHandle {
                     store: store_copy,
@@ -497,7 +548,7 @@ impl<VNativeNode, T> VContextT<VNativeNode> for VContext<VNativeNode, T> {
         }
     }
     fn push_value(self: Box<Self>, store: Rc<RefCell<dyn ContextStoreT>>) -> VNode<VNativeNode> {
-        let s = store.borrow_mut().downcast_ref::<ContextStore<T>>().unwrap() as *const ContextStore<T>;
+        let s = store.try_borrow_mut().unwrap().downcast_ref::<ContextStore<T>>().unwrap() as *const ContextStore<T>;
         unsafe {
             let ss = s as *mut ContextStore<T>;
             (*ss).value = self.store.value

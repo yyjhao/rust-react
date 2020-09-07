@@ -20,7 +20,7 @@ pub fn component_def(scope: &mut Scope, _props: &(), ref_object: &RefObject<Ref>
     }, count);
 
     let input_ref = scope.use_ref();
-    *ref_object.borrow_mut() = Some(Ref {
+    *ref_object.try_borrow_mut().unwrap() = Some(Ref {
         some_action: Box::new(move || {
             // web_sys::console::log(&js_sys::Array::from(&JsValue::from(&content_val)));
         })
@@ -38,7 +38,7 @@ pub fn component_def(scope: &mut Scope, _props: &(), ref_object: &RefObject<Ref>
             hd(VDomElement {
                 tag_name: "input",
                 listeners: vec![
-                    (String::from("input"), scope.use_callback(Box::new(move |scope, event| {
+                    ("input", scope.use_callback(Box::new(move |scope, event| {
                         set_content_val(scope, event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value())
                     })))
                 ],

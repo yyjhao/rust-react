@@ -3,16 +3,17 @@ use wasm_bindgen::prelude::*;
 extern crate downcast_rs;
 use wasm_bindgen::JsCast;
 use std::cell::RefCell;
+use components::{app};
+use std::rc::Rc;
+use crate::v_node::Updater;
 
 mod v_node;
 #[macro_use]
 mod v_dom_node;
 mod dom_renderer;
 mod renderer;
-mod component;
-mod component_2;
+mod components;
 mod test_context;
-// mod component_renderer;
 
 
 #[wasm_bindgen(start)]
@@ -22,18 +23,16 @@ pub fn start() -> () {
     let document = window.document().expect("should have a document on window");
     crate::dom_renderer::mount_dom_component(Box::new(
         crate::v_node::VComponentElement {
-            component_def: component::component_def,
-            props: component::Props {
-                num_rows: 1
-            },
+            component_def: app::component_def,
+            props: (),
             ref_object: std::rc::Rc::new(RefCell::new(None))
         }
-    ), document.body().unwrap().query_selector("#mount").unwrap().unwrap().dyn_into::<web_sys::HtmlElement>().unwrap());
+    ), document.body().unwrap().query_selector("#mount").unwrap().unwrap().dyn_into::<web_sys::HtmlElement>().unwrap(), Rc::new(RefCell::new(Updater::new())));
     // let renderer = component_renderer::ComponentRenderer::mount(document.body().unwrap().dyn_into::<web_sys::Element>().unwrap(), &component_2::testComponentDef, component_2::Props {
     // });
 
     // let closure = Closure::once(move || {
-    //     renderer.borrow_mut().unmount();
+    //     renderer.try_borrow_mut().unwrap().unmount();
     // });
     // let function = closure.as_ref().unchecked_ref();
 

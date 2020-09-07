@@ -2,7 +2,7 @@ use crate::v_node::{VNode, RefObject, CallbackHandle};
 use std::collections::HashMap;
 
 pub type VDomNode = VNode<VDom>;
-pub type Listener = (String, CallbackHandle<web_sys::Event>);
+pub type Listener = (&'static str, CallbackHandle<web_sys::Event>);
 
 pub struct VDomElement {
     pub tag_name: &'static str,
