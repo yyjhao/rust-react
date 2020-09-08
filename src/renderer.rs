@@ -1,3 +1,4 @@
+use wasm_bindgen::prelude::*;
 use crate::v_node::{Updater, VNode, Renderer, Scope, VComponentElementT, VContextT, ContextLink, clone_context_link, ContextNode};
 use std::rc::Rc;
 use std::cell::{RefCell};
@@ -249,7 +250,12 @@ impl<VNativeNode: 'static> Mount<VNativeNode> {
         match vnode {
             VNode::Native(native) => Mount::Native(native_mount_factory.make_native_mount(native, context_link, updater)),
             VNode::Fragment(fragment) => Mount::Fragment(FragmentMount::new(fragment, context_link, native_mount_factory, updater)),
-            VNode::Component(component) => Mount::Component(ComponentMount::new(component, context_link, native_mount_factory, updater)),
+            VNode::Component(component) => Mount::Component({
+                let renderer = ComponentMount::new(component, context_link, native_mount_factory, updater);
+                let r: Rc<RefCell<dyn Renderer>> = renderer.clone();
+                crate::v_node::update(&r, |_|{});
+                renderer
+            }),
             VNode::Context(context) => Mount::Context(ContextMount::new(context, context_link, native_mount_factory, updater))
         }
     }

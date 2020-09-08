@@ -83,6 +83,7 @@ impl DomElementMount {
             self.root_dom_node.style().remove_property(key).unwrap();
         }
         self.attributes = new_node.attributes;
+        self.style = new_node.style;
         self.listeners = new_node.listeners.into_iter().map(|(event, handle)| {
             let listener: Box<dyn Fn(web_sys::Event) -> ()> = Box::new(move |event| {
                 handle.trigger(event);

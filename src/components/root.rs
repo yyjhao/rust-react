@@ -1,19 +1,25 @@
 use wasm_bindgen::prelude::*;
 use crate::v_node::{Scope, RefObject, h, ct, CallbackHandle};
 use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
+use crate::components::task;
+use std::cell::RefCell;
+
 use wasm_bindgen::JsCast;
 use im_rc::Vector;
 
-pub struct Props {
-    pub tasks: Vector<Task>,
-    pub on_add_task: CallbackHandle<String>,
+#[derive(Clone, PartialEq)]
+pub enum ViewType {
+    All,
+    Incomplete,
+    Completed
 }
 
-#[derive(Clone, PartialEq)]
-pub struct Task {
-    pub id: usize,
-    pub completed: bool,
-    pub name: String
+pub struct Props {
+    pub tasks: Vector<task::Task>,
+    pub on_add_task: CallbackHandle<String>,
+    pub on_task_updated: CallbackHandle<(usize, bool)>,
+    pub on_view_updated: CallbackHandle<ViewType>,
+    pub current_view_type: ViewType
 }
 
 pub fn component_def(scope: &mut Scope, props: &Props, _ref_object: &RefObject<()>) -> VDomNode {
@@ -21,18 +27,9 @@ pub fn component_def(scope: &mut Scope, props: &Props, _ref_object: &RefObject<(
     let set_new_task_name_2 = set_new_task_name.clone();
     let new_task_name_2 = new_task_name.clone();
     let on_add_task = props.on_add_task.clone();
-    let (has_rendered, set_has_rendered) = scope.use_state(false);
-    let update_has_rendered = scope.use_callback::<()>(Box::new(move |scope, _| {
-        set_has_rendered(scope, true);
-    }));
-
-    scope.use_effect_always(move || {
-        if !has_rendered {
-            update_has_rendered.trigger(());
-        }
-        Some(|| {
-        })
-    });
+    let on_view_updated_1 = props.on_view_updated.clone();
+    let on_view_updated_2 = props.on_view_updated.clone();
+    let on_view_updated_3 = props.on_view_updated.clone();
 
     hd(VDomElement {
         tag_name: "div", 
@@ -46,7 +43,8 @@ pub fn component_def(scope: &mut Scope, props: &Props, _ref_object: &RefObject<(
             "padding" => String::from("8px"),
             "border" => String::from("2px solid #999"),
             "min-height" => String::from("100vh"),
-            "border-bottom-color" => String::from("transparent")
+            "border-bottom-color" => String::from("transparent"),
+            "font-family" => String::from("sans-serif")
         },
         children: ordered_children(vec![
             hd(VDomElement {
@@ -57,7 +55,7 @@ pub fn component_def(scope: &mut Scope, props: &Props, _ref_object: &RefObject<(
                     }))),
                     ("keydown", scope.use_callback(Box::new(move |scope, event| {
                         let key_code = event.dyn_into::<web_sys::KeyboardEvent>().unwrap().key_code();
-                        if key_code == 13 {
+                        if key_code == 13 && new_task_name.len() > 0 {
                             set_new_task_name_2(scope, String::from(""));
                             on_add_task.trigger(new_task_name.clone());
                         }
@@ -79,18 +77,59 @@ pub fn component_def(scope: &mut Scope, props: &Props, _ref_object: &RefObject<(
                     "border-radius" => String::from("5px")
                 },
             }),
+            hd(VDomElement {
+                tag_name: "div",
+                listeners: vec![
+                ],
+                attributes: std::collections::HashMap::new(),
+                children: ordered_children(vec![
+                    view_select(false, String::from("All"), scope.use_callback(Box::new(move |_, _| {
+                        on_view_updated_1.trigger(ViewType::All)
+                    })), props.current_view_type == ViewType::All),
+                    view_select(false, String::from("Completed"), scope.use_callback(Box::new(move |_, _| {
+                        on_view_updated_2.trigger(ViewType::Completed)
+                    })), props.current_view_type == ViewType::Completed),
+                    view_select(true, String::from("Incomplete"), scope.use_callback(Box::new(move |_, _| {
+                        on_view_updated_3.trigger(ViewType::Incomplete)
+                    })), props.current_view_type == ViewType::Incomplete),
+                ]),
+                ref_object: None,
+                style: map! {
+                    "border" => String::from("1px solid black"),
+                    "height" => String::from("32px"),
+                    "border-radius" => String::from("16px"),
+                    "display" => String::from("flex"),
+                    "margin-top" => String::from("10px"),
+                    "overflow" => String::from("hidden")
+                }
+            }),
             VDomNode::Fragment(props.tasks.iter().map(|task| {
-                (task.id.to_string(), hd(VDomElement {
-                    tag_name: "div",
-                    listeners: vec![],
-                    attributes: std::collections::HashMap::new(),
-                    children: Box::new(t(&task.name)),
-                    ref_object: None,
-                    style: std::collections::HashMap::new()
-                }))
+                (task.id.to_string(), h(task::component_def, (task.clone(), props.on_task_updated.clone()), std::rc::Rc::new(RefCell::new(None))))
             }).collect()),
         ]),
         ref_object: None
     })
 }
 
+fn view_select(is_last: bool, name: String, on_click: CallbackHandle<web_sys::Event>, active: bool) -> VDomNode {
+    hd(VDomElement {
+        tag_name: "div",
+        listeners: vec![
+            ("click", on_click)
+        ],
+        attributes: std::collections::HashMap::new(),
+        children: ordered_children(vec![
+            t(&name)
+        ]),
+        ref_object: None,
+        style: map! {
+            "border-right" => String::from(if is_last {"none"} else {"1px solid black"}),
+            "height" => String::from("32px"),
+            "line-height" => String::from("32px"),
+            "flex" => String::from("1 1 auto"),
+            "text-align" => String::from("center"),
+            "cursor" => String::from("pointer"),
+            "background" => String::from(if active { "lightblue" } else { "transparent" })
+        }
+    })
+}

@@ -30,3 +30,6 @@ features = [
   'CssStyleDeclaration',
   'KeyboardEvent'
 ]
+
+[profile.release]
+debug = true
