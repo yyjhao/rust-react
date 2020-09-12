@@ -1,4 +1,5 @@
-use crate::v_node::{VNode, RefObject, CallbackHandle};
+use crate::v_node::VNode;
+use crate::scope::{RefObject, CallbackHandle};
 use std::collections::HashMap;
 
 pub type VDomNode = VNode<VDom>;

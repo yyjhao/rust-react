@@ -5,7 +5,8 @@ use wasm_bindgen::JsCast;
 use std::cell::RefCell;
 use components::{app};
 use std::rc::Rc;
-use crate::v_node::{VComponentElement, Updater};
+use crate::v_node::VComponentElement;
+use crate::scope::Updater;
 
 mod v_node;
 #[macro_use]
@@ -13,6 +14,7 @@ mod v_dom_node;
 mod dom_renderer;
 mod renderer;
 mod components;
+mod scope;
 
 
 #[wasm_bindgen(start)]

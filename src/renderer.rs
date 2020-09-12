@@ -1,5 +1,5 @@
-use wasm_bindgen::prelude::*;
-use crate::v_node::{Updater, VNode, Renderer, Scope, VComponentElementT, VContextT, ContextLink, clone_context_link, ContextNode, ContextNodeT};
+use crate::v_node::{VNode, VComponentElementT, VContextT};
+use crate::scope::{Updater, Scope, ContextLink, clone_context_link, ContextNodeT, Renderer, update};
 use std::rc::Rc;
 use std::cell::{RefCell};
 use std::collections::HashMap;
@@ -241,7 +241,7 @@ impl<VNativeNode: 'static> Mount<VNativeNode> {
             VNode::Component(component) => Mount::Component({
                 let renderer = ComponentMount::new(component, context_link, native_mount_factory, updater);
                 let r: Rc<RefCell<dyn Renderer>> = renderer.clone();
-                crate::v_node::update(&r, |_|{});
+                update(&r, |_|{});
                 renderer
             }),
             VNode::Context(context) => Mount::Context(ContextMount::new(context, context_link, native_mount_factory, updater))

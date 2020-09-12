@@ -1,4 +1,5 @@
-use crate::v_node::{Scope, RefObject, CallbackHandle, ComponentModel};
+use crate::v_node::ComponentModel;
+use crate::scope::{Scope, RefObject, CallbackHandle};
 use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
 use crate::components::style_context;
 

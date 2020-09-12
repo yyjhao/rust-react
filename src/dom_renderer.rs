@@ -1,7 +1,8 @@
 use wasm_bindgen::prelude::*;
 use std::collections::HashMap;
 use crate::v_dom_node::{VDomNode, VDomElement, VDom};
-use crate::v_node::{VComponentElementT, RefObject, ContextLink, clone_context_link, Updater};
+use crate::v_node::VComponentElementT;
+use crate::scope::{RefObject, ContextLink, clone_context_link, Updater};
 use crate::renderer::{NativeMount, ComponentMount, NativeMountFactory, Mount};
 use wasm_bindgen::JsCast;
 use std::rc::{Rc, Weak};
