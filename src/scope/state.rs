@@ -23,7 +23,9 @@ impl<T: Clone + PartialEq + 'static> StateStore<T> {
 
     pub fn request_update_map<F: FnOnce(&T) -> T>(&mut self, scope: &mut Scope, mapper: F) {
         let new_value = mapper(&self.value);
-        scope.update_flag = new_value != self.value;
+        if new_value != self.value {
+            scope.mark_update();
+        }
         self.value = new_value;
     }
 }

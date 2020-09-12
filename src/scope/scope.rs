@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::cell::{RefCell, Cell};
 use std::any::Any;
 use crate::scope::renderer::Renderer;
-use crate::scope::context::{ContextLink, ContextConsumerHandleT, ContextConsumerHandle, ContextNode};
+use crate::scope::context::{ContextLink, ContextConsumerHandleT, ContextConsumerHandle, ContextNode, clone_context_link};
 use crate::scope::state::{StateStoreT, StateStore};
 use crate::scope::effect::{EffectStoreT, EffectStore};
 use crate::scope::memo::{MemoStoreT, MemoStore};
@@ -36,14 +36,14 @@ impl<Hook> HookList<Hook> {
 }
 
 pub struct Scope {
-    pub update_flag: bool,
-    pub renderer: Rc<RefCell<dyn Renderer>>,
-    pub context_link: ContextLink,
+    update_flag: bool,
+    renderer: Rc<RefCell<dyn Renderer>>,
+    context_link: ContextLink,
     callback_store: HookList<Box<dyn CallbackStoreT>>,
     state_hooks: HookList<Box<dyn StateStoreT>>,
     ref_hooks: HookList<Rc<dyn Any>>,
     context_hooks: HookList<Rc<dyn ContextConsumerHandleT>>,
-    pub effect_hooks: HookList<Rc<dyn EffectStoreT>>,
+    effect_hooks: HookList<Rc<dyn EffectStoreT>>,
     memo_hooks: HookList<Box<dyn MemoStoreT>>,
     has_init: bool
 }
@@ -53,7 +53,6 @@ impl Drop for Scope {
         self.reset();
     }
 }
-
 
 impl Scope {
     pub fn new(renderer: Rc<RefCell<dyn Renderer>>, context_link: ContextLink) -> Scope {
@@ -79,6 +78,26 @@ impl Scope {
         self.context_hooks.clear();
         self.ref_hooks.clear();
         self.has_init = false;
+    }
+
+    pub fn mark_update(&mut self) {
+        self.update_flag = true;
+    }
+
+    pub fn clear_update(&mut self) {
+        self.update_flag = false;
+    }
+
+    pub fn has_update(&self) -> bool {
+        self.update_flag
+    }
+
+    pub fn effects_iter(&self) -> std::slice::Iter<Rc<dyn EffectStoreT>> {
+        self.effect_hooks.hooks.iter()
+    }
+
+    pub fn clone_context_link(&self) -> ContextLink {
+        clone_context_link(&self.context_link)
     }
 
     pub fn mark_start_render(&mut self) {

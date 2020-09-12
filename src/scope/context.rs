@@ -42,7 +42,7 @@ impl<T: 'static> ContextNodeT for ContextNode<T> {
     fn trigger_update(&self) {
         for r in self.renderers.try_borrow().unwrap().iter() {
             update(r, |scope| {
-                scope.update_flag = true
+                scope.mark_update();
             });
         }
     }

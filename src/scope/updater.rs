@@ -60,7 +60,7 @@ pub fn update<T: FnOnce(&mut Scope)>(renderer: &Rc<RefCell<dyn Renderer>>, updat
     for r in updatable.into_iter() {
         let mut mut_r = r.try_borrow_mut().unwrap();
         mut_r.maybe_update();
-        for e in mut_r.scope_mut().effect_hooks.hooks.iter() {
+        for e in mut_r.scope_mut().effects_iter() {
             effects.push(e.clone());
         }
     }

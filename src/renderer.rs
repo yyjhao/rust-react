@@ -65,12 +65,12 @@ impl<VNativeNode: 'static> ComponentMount<VNativeNode> {
     }
 
     fn rerender(&mut self) -> () {
-        self.scope.as_mut().unwrap().update_flag = false;
+        self.scope.as_mut().unwrap().clear_update();
         let render_result = self.element.render(&mut self.scope.as_mut().unwrap());
         if let Some(current_mount) = self.content.take() {
             self.content = Some(current_mount.update(render_result, self.native_mount_factory.clone(), self.updater.clone()))
         } else {
-            self.content = Some(Mount::new(render_result, clone_context_link(&self.scope.as_ref().unwrap().context_link), self.native_mount_factory.clone(), self.updater.clone()));
+            self.content = Some(Mount::new(render_result, self.scope.as_ref().unwrap().clone_context_link(), self.native_mount_factory.clone(), self.updater.clone()));
         }
     }
 
@@ -87,7 +87,7 @@ impl<VNativeNode: 'static> ComponentMount<VNativeNode> {
     pub fn consume_update(&mut self) {
         match self.scope.as_ref() {
             Some(scope) => {
-                if scope.update_flag {
+                if scope.has_update() {
                     self.native_mount_factory.reset_scanner();
                     self.rerender();
                 }
@@ -285,7 +285,7 @@ impl<VNativeNode: 'static> Mount<VNativeNode> {
         match self {
             Mount::Native(native) => clone_context_link(native.try_borrow().unwrap().get_context_link()),
             Mount::Fragment(fragment) => clone_context_link(&fragment.context_link),
-            Mount::Component(component) => clone_context_link(&component.try_borrow().unwrap().scope.as_ref().unwrap().context_link),
+            Mount::Component(component) => component.try_borrow().unwrap().scope.as_ref().unwrap().clone_context_link(),
             Mount::Context(context) => Some(context.context_link.clone())
         }
     }
