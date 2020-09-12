@@ -15,8 +15,7 @@ impl ComponentModel<VDom, ()> for (Task, CallbackHandle<(usize, bool)>) {
         let on_task_updated_2 = on_task_updated.clone();
         let id = task.id;
         let completed = task.completed;
-        let s = scope.use_context::<style_context::StyleType>();
-        let style = s.get();
+        let style = scope.use_context::<style_context::StyleType>();
         hd(VDomElement {
             tag_name: "div",
             listeners: vec![

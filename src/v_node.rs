@@ -1,5 +1,5 @@
 use std::rc::{Rc, Weak};
-use std::cell::{RefCell, Ref, Cell};
+use std::cell::{RefCell, Cell};
 use std::any::Any;
 
 use downcast_rs::Downcast;
@@ -35,13 +35,21 @@ impl Updater {
 pub type RefObject<T> = Rc<RefCell<Option<T>>>;
 
 pub struct ContextConsumerHandle<T: 'static> {
-    value: Rc<RefCell<dyn Any>>,
-    phantom: std::marker::PhantomData<T>,
+    pub context_node: Rc<ContextNode<T>>,
 }
 
-impl<T> ContextConsumerHandle<T> {
-    pub fn get(&self) -> Ref<T> {
-        Ref::map(self.value.try_borrow().unwrap(), |s| {s.downcast_ref::<T>().unwrap()})
+pub trait ContextConsumerHandleT: Downcast {
+    fn cleanup(&self, renderer: Rc<RefCell<dyn Renderer>>);
+}
+impl_downcast!(ContextConsumerHandleT);
+
+impl<T: 'static> ContextConsumerHandleT for ContextConsumerHandle<T> {
+    fn cleanup(&self, renderer: Rc<RefCell<dyn Renderer>>) {
+        let mut renderers = self.context_node.renderers.try_borrow_mut().unwrap();
+        let index = renderers.iter().position(|r| {
+            r.as_ptr() == renderer.as_ptr()
+        }).unwrap();
+        renderers.remove(index);
     }
 }
 
@@ -84,12 +92,32 @@ pub trait Renderer {
     fn updater(&self) -> Rc<RefCell<Updater>>;
 }
 
-pub type ContextLink = Option<Rc<ContextNode>>;
+pub type ContextLink = Option<Rc<dyn ContextNodeT>>;
 
-pub struct ContextNode {
-    pub parent: ContextLink,
-    pub value: Rc<RefCell<dyn Any>>,
-    pub renderers: RefCell<Vec<Rc<RefCell<dyn Renderer>>>>
+pub struct ContextNode<T> {
+    parent: ContextLink,
+    value: RefCell<Rc<T>>,
+    renderers: RefCell<Vec<Rc<RefCell<dyn Renderer>>>>
+}
+
+pub trait ContextNodeT: Downcast {
+    fn trigger_update(&self);
+    fn parent(&self) -> &ContextLink;
+}
+impl_downcast!(ContextNodeT);
+
+impl<T: 'static> ContextNodeT for ContextNode<T> {
+    fn trigger_update(&self) {
+        for r in self.renderers.try_borrow().unwrap().iter() {
+            update(r, |scope| {
+                scope.update_flag = true
+            });
+        }
+    }
+
+    fn parent(&self) -> &ContextLink {
+        &self.parent
+    }
 }
 
 pub fn clone_context_link(context_link: &ContextLink) -> ContextLink {
@@ -201,6 +229,7 @@ pub struct Scope {
     callback_store: HookList<Box<dyn CallbackStoreT>>,
     state_hooks: HookList<Box<dyn StateStoreT>>,
     ref_hooks: HookList<Rc<dyn Any>>,
+    context_hooks: HookList<Rc<dyn ContextConsumerHandleT>>,
     effect_hooks: HookList<Rc<dyn EffectStoreT>>,
     memo_hooks: HookList<Box<dyn MemoStoreT>>,
     has_init: bool
@@ -290,6 +319,7 @@ impl Scope {
             ref_hooks: HookList::new(),
             effect_hooks: HookList::new(),
             memo_hooks: HookList::new(),
+            context_hooks: HookList::new(),
             has_init: false
         }
     }
@@ -299,6 +329,8 @@ impl Scope {
         self.effect_hooks.clear();
         self.callback_store.clear();
         self.memo_hooks.clear();
+        self.context_hooks.clear();
+        self.ref_hooks.clear();
         self.has_init = false;
     }
 
@@ -306,6 +338,7 @@ impl Scope {
         self.state_hooks.current_index = 0;
         self.effect_hooks.current_index = 0;
         self.ref_hooks.current_index = 0;
+        self.context_hooks.current_index = 0;
         self.memo_hooks.current_index = 0;
         self.callback_store.current_index = 0;
     }
@@ -364,13 +397,14 @@ impl Scope {
         }
     }
 
-    pub fn use_context<T>(&mut self) -> Rc<ContextConsumerHandle<T>> {
+    pub fn use_context<T: 'static>(&mut self) -> Rc<T> {
         if self.has_init {
-            Rc::downcast::<ContextConsumerHandle<T>>(self.ref_hooks.get().clone()).unwrap()
+            self.context_hooks.get().clone().downcast_rc::<ContextConsumerHandle<T>>().ok().unwrap().context_node.value.try_borrow().unwrap().clone()
         } else {
             let handle = Rc::new(self.create_context_handle::<T>());
-            self.ref_hooks.hooks.push(handle.clone());
-            handle
+            let result = handle.context_node.value.try_borrow().unwrap().clone();
+            self.context_hooks.hooks.push(handle.clone());
+            result
         }
         
     }
@@ -442,13 +476,10 @@ impl Scope {
         let context_link = &self.context_link;
         loop {
             let cl = context_link.as_ref().unwrap();
-            let store_copy = cl.value.clone();
-            let store = cl.value.try_borrow().unwrap();
-            if store.downcast_ref::<T>().is_some() {
-                cl.renderers.try_borrow_mut().unwrap().push(self.renderer.clone());
+            if let Some(casted) = cl.clone().downcast_rc::<ContextNode<T>>().ok() {
+                casted.renderers.try_borrow_mut().unwrap().push(self.renderer.clone());
                 return ContextConsumerHandle {
-                    value: store_copy,
-                    phantom: std::marker::PhantomData,
+                    context_node: casted
                 }
             }
         }
@@ -458,6 +489,9 @@ impl Scope {
         let effect_hooks = std::mem::take(&mut self.effect_hooks.hooks);
         for e in effect_hooks.into_iter() {
             e.cleanup();
+        }
+        for c in self.context_hooks.hooks.iter() {
+            c.cleanup(self.renderer.clone());
         }
     }
 }
@@ -507,35 +541,32 @@ pub struct VContext<VNativeNode: 'static, T: 'static> {
     pub children: Box<VNode<VNativeNode>>
 }
 
-pub struct VContextS<VNativeNode: 'static> {
-    pub value: Rc<RefCell<dyn Any>>,
-    pub children: Box<VNode<VNativeNode>>
-}
-
 pub trait VContextT<VNativeNode: 'static> {
-    fn take(self: Box<Self>) -> VContextS<VNativeNode>;
-    fn push_value(self: Box<Self>, store: Rc<RefCell<dyn Any>>) -> VNode<VNativeNode>;
-    fn is_same_context(self: &Self, store: Rc<RefCell<dyn Any>>) -> bool;
+    fn to_context_link(self: Box<Self>, parent: ContextLink) -> (Rc<dyn ContextNodeT>, VNode<VNativeNode>);
+    fn push_value(self: Box<Self>, context_link: Rc<dyn ContextNodeT>) -> VNode<VNativeNode>;
+    fn is_same_context(self: &Self, store: Rc<dyn ContextNodeT>) -> bool;
 }
 
 impl<VNativeNode, T> VContextT<VNativeNode> for VContext<VNativeNode, T> {
-    fn take(self: Box<Self>) -> VContextS<VNativeNode> {
-        VContextS {
-            value: Rc::new(RefCell::new(self.value)),
-            children: self.children
-        }
+    fn to_context_link(self: Box<Self>, parent: ContextLink) -> (Rc<dyn ContextNodeT>, VNode<VNativeNode>) {
+        (
+            Rc::new(ContextNode {
+                parent,
+                value: RefCell::new(Rc::new(self.value)),
+                renderers: RefCell::new(vec![])
+            }),
+            *self.children
+        )
     }
-    fn push_value(self: Box<Self>, store: Rc<RefCell<dyn Any>>) -> VNode<VNativeNode> {
-        let s = store.try_borrow_mut().unwrap().downcast_ref::<T>().unwrap() as *const T;
-        unsafe {
-            let ss = s as *mut T;
-            (*ss) = self.value
-        };
+
+    fn push_value(self: Box<Self>, context_node: Rc<dyn ContextNodeT>) -> VNode<VNativeNode> {
+        let node = context_node.downcast_rc::<ContextNode<T>>().ok().unwrap();
+        *node.value.try_borrow_mut().unwrap() = Rc::new(self.value);
         *self.children
     }
 
-    fn is_same_context(self: &Self, store: Rc<RefCell<dyn Any>>) -> bool {
-        store.try_borrow_mut().unwrap().downcast_ref::<T>().is_some()
+    fn is_same_context(self: &Self, context_node: Rc<dyn ContextNodeT>) -> bool {
+        context_node.downcast_rc::<ContextNode<T>>().is_ok()
     }
 }
 

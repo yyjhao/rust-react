@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use crate::v_node::{Updater, VNode, Renderer, Scope, VComponentElementT, VContextT, ContextLink, clone_context_link, ContextNode};
+use crate::v_node::{Updater, VNode, Renderer, Scope, VComponentElementT, VContextT, ContextLink, clone_context_link, ContextNode, ContextNodeT};
 use std::rc::Rc;
 use std::cell::{RefCell};
 use std::collections::HashMap;
@@ -56,6 +56,7 @@ impl<VNativeNode: 'static> ComponentMount<VNativeNode> {
             self.rerender()
         } else {
             self.unmount();
+            scope.cleanup();
             scope.reset();
             self.element = element;
             self.scope = Some(scope);
@@ -155,26 +156,22 @@ impl<VNativeNode: 'static> FragmentMount<VNativeNode> {
 
 pub struct ContextMount<VNativeNode: 'static> {
     updater: Rc<RefCell<Updater>>,
-    context_link: Rc<ContextNode>,
+    context_link: Rc<dyn ContextNodeT>,
     children_mount: Option<Box<Mount<VNativeNode>>>,
     native_mount_factory: Rc<dyn NativeMountFactory<VNativeNode>>,
 }
 
 impl<VNativeNode> ContextMount<VNativeNode> {
     pub fn new(c: Box<dyn VContextT<VNativeNode>>, context_link: ContextLink, native_mount_factory: Rc<dyn NativeMountFactory<VNativeNode>>, updater: Rc<RefCell<Updater>>) -> ContextMount<VNativeNode> {
-        let context = c.take();
+        let (context_link, children) = c.to_context_link(context_link);
         let mut result = ContextMount {
             updater,
             native_mount_factory: native_mount_factory.component_native_mount_factory(),
-            context_link: Rc::new(ContextNode {
-                parent: context_link,
-                value: context.value,
-                renderers: RefCell::new(vec![])
-            }),
+            context_link,
             children_mount: None
         };
 
-        result.rerender(*context.children);
+        result.rerender(children);
         result
     }
 
@@ -187,25 +184,16 @@ impl<VNativeNode> ContextMount<VNativeNode> {
     }
 
     fn update(&mut self, n: Box<dyn VContextT<VNativeNode>>) {
-        if n.is_same_context(self.context_link.value.clone()) {
-            let children = n.push_value(self.context_link.value.clone());
+        if n.is_same_context(self.context_link.clone()) {
+            let children = n.push_value(self.context_link.clone());
             self.native_mount_factory.reset_scanner();
-            for r in self.context_link.renderers.try_borrow().unwrap().iter() {
-                crate::v_node::update(r, |scope| {
-                    scope.update_flag = true
-                });
-            }
+            self.context_link.trigger_update();
             self.rerender(children);
         } else {
-            let node = n.take();
-            let parent = self.context_link.parent.clone();
+            let (context_link, children) = n.to_context_link(self.context_link.parent().clone());
             self.unmount();
-            self.context_link = Rc::new(ContextNode {
-                parent,
-                value: node.value,
-                renderers: RefCell::new(vec![])
-            });
-            self.rerender(*node.children);
+            self.context_link = context_link;
+            self.rerender(children);
         }
     }
 
