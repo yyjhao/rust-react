@@ -1,7 +1,5 @@
-use wasm_bindgen::prelude::*;
 use std::rc::{Rc, Weak};
 use std::cell::{RefCell, Ref, Cell};
-use std::any::TypeId;
 use std::any::Any;
 
 use downcast_rs::Downcast;
@@ -83,8 +81,6 @@ impl_downcast!(StateStoreT);
 impl<T: Clone + PartialEq + 'static> StateStoreT for StateStore<T> {
 
 }
-
-pub type ContextDef<T> = std::marker::PhantomData<T>;
 
 pub trait Renderer {
     fn maybe_update(&mut self);
@@ -482,12 +478,24 @@ impl Scope {
 }
 
 
-pub type ComponentDef<VNativeNode, Props, Ref> = fn(scope: &mut Scope, props: &Props, self_ref: &RefObject<Ref>) -> VNode<VNativeNode>;
+pub trait ComponentModel<VNativeNode, Ref> {
+    fn render(self: &Self, scope: &mut Scope, self_ref: &RefObject<Ref>) -> VNode<VNativeNode>;
+}
 
-pub struct VComponentElement<VNativeNode, Props, Ref> where VNativeNode: 'static {
-    pub component_def: ComponentDef<VNativeNode, Props, Ref>,
-    pub props: Props,
-    pub ref_object: RefObject<Ref>
+pub struct VComponentElement<VNativeNode, Model, Ref> where VNativeNode: 'static, Model: ComponentModel<VNativeNode, Ref> {
+    pub component_model: Model,
+    pub ref_object: RefObject<Ref>,
+    phantom: std::marker::PhantomData<VNativeNode>
+}
+
+impl<VNativeNode, Model, Ref> VComponentElement<VNativeNode, Model, Ref> where VNativeNode: 'static, Model: ComponentModel<VNativeNode, Ref> {
+    pub fn new(model: Model, ref_object: RefObject<Ref>) -> VComponentElement<VNativeNode, Model, Ref> {
+        VComponentElement {
+            component_model: model,
+            ref_object,
+            phantom: std::marker::PhantomData
+        }
+    }
 }
 
 pub trait VComponentElementT<VNativeNode: 'static>: Downcast {
@@ -496,19 +504,16 @@ pub trait VComponentElementT<VNativeNode: 'static>: Downcast {
 }
 impl_downcast!(VComponentElementT<VNativeNode>);
 
-impl<Props: 'static, Ref: 'static, VNativeNode: 'static> VComponentElementT<VNativeNode> for VComponentElement<VNativeNode, Props, Ref> {
+impl<Model: ComponentModel<VNativeNode, Ref> + 'static, Ref: 'static, VNativeNode: 'static> VComponentElementT<VNativeNode> for VComponentElement<VNativeNode, Model, Ref> {
     fn render(&self, scope: &mut Scope) -> VNode<VNativeNode> {
         scope.mark_start_render();
-        let result = (self.component_def)(scope, &self.props, &self.ref_object);
+        let result = self.component_model.render(scope, &self.ref_object);
         scope.mark_end_render();
         result
     }
 
     fn same_component(&self, other: &(dyn VComponentElementT<VNativeNode> + 'static)) -> bool {
-        match other.downcast_ref::<VComponentElement<VNativeNode, Props, Ref>>() {
-            Some(other_element) => other_element.component_def as usize == self.component_def as usize,
-            None => false
-        }
+        other.downcast_ref::<VComponentElement<VNativeNode, Model, Ref>>().is_some()
     }
 }
 
@@ -557,20 +562,20 @@ pub enum VNode<VNativeNode: 'static> {
 }
 
 impl<VNativeNode> VNode<VNativeNode> {
-    fn component<Props: 'static, Ref: 'static>(element: VComponentElement<VNativeNode, Props, Ref>) -> VNode<VNativeNode> where VNativeNode: 'static {
+    fn component<Model: ComponentModel<VNativeNode, Ref> + 'static, Ref: 'static>(element: VComponentElement<VNativeNode, Model, Ref>) -> VNode<VNativeNode> where VNativeNode: 'static {
         VNode::Component(Box::new(
             element
         ))
     }
 }
 
-pub fn h<VNativeNode, Props: 'static, Ref: 'static>(component_def: ComponentDef<VNativeNode, Props, Ref>, props: Props, ref_object: RefObject<Ref>) -> VNode<VNativeNode>
+pub fn h<VNativeNode, Model: ComponentModel<VNativeNode, Ref> + 'static, Ref: 'static>(component_model: Model, ref_object: RefObject<Ref>) -> VNode<VNativeNode>
     where
         VNativeNode: 'static {
-    VNode::component(VComponentElement::<VNativeNode, Props, Ref> {
-            component_def,
-            props: props,
-            ref_object
+    VNode::component(VComponentElement::<VNativeNode, Model, Ref> {
+            component_model,
+            ref_object,
+            phantom: std::marker::PhantomData
         })
 }
 
