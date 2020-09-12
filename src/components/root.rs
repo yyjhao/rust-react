@@ -51,12 +51,12 @@ impl ComponentModel<VDom, ()> for Props {
                     tag_name: "input",
                     listeners: vec![
                         ("input", scope.use_callback(Box::new(move |scope, event| {
-                            set_new_task_name(scope, event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value())
+                            set_new_task_name(scope, Box::new(move |_| { event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value()}))
                         }))),
                         ("keydown", scope.use_callback(Box::new(move |scope, event| {
                             let key_code = event.dyn_into::<web_sys::KeyboardEvent>().unwrap().key_code();
                             if key_code == 13 && new_task_name.len() > 0 {
-                                set_new_task_name_2(scope, String::from(""));
+                                set_new_task_name_2(scope, Box::new(|_| { String::from("") }));
                                 on_add_task.trigger(new_task_name.clone());
                             }
                         })))

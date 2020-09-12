@@ -13,7 +13,6 @@ mod v_dom_node;
 mod dom_renderer;
 mod renderer;
 mod components;
-mod test_context;
 
 
 #[wasm_bindgen(start)]

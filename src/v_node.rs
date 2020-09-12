@@ -47,15 +47,15 @@ impl<T> ContextConsumerHandle<T> {
 
 pub struct StateStore<T: Clone + PartialEq + 'static> {
     value: T,
-    update_func: Rc<dyn Fn(&mut Scope, T)>
+    update_func: Rc<dyn Fn(&mut Scope, Box<dyn FnOnce(&T) -> T>)>
 }
 
 impl<T: Clone + PartialEq + 'static> StateStore<T> {
     fn new(value: T, index: usize) -> StateStore<T> {
         StateStore {
             value,
-            update_func: Rc::new(move |scope: &mut Scope, new_value| {
-                scope.update_state(index, new_value)
+            update_func: Rc::new(move |scope: &mut Scope, mapper| {
+                scope.update_state(index, mapper)
             })
         }
     }
@@ -64,14 +64,10 @@ impl<T: Clone + PartialEq + 'static> StateStore<T> {
         self.value.clone()
     }
 
-    pub fn request_update(&mut self, scope: &mut Scope, new_value: T) {
+    pub fn request_update_map<F: FnOnce(&T) -> T>(&mut self, scope: &mut Scope, mapper: F) {
+        let new_value = mapper(&self.value);
         scope.update_flag = new_value != self.value;
         self.value = new_value;
-    }
-
-    pub fn request_update_map<F: Fn(&T) -> T>(&mut self, scope: &mut Scope, mapper: F) {
-        let new_value = mapper(&self.value);
-        self.request_update(scope, new_value);
     }
 }
 pub trait StateStoreT: Downcast {
@@ -359,15 +355,15 @@ impl Scope {
         }
     }
 
-    fn update_state<T: 'static + PartialEq + Clone>(&mut self, index: usize, new_value: T) {
+    fn update_state<T: 'static + PartialEq + Clone>(&mut self, index: usize, mapper: Box<dyn FnOnce(&T) -> T>) {
         let store = self.state_hooks.hooks.get(index).unwrap().downcast_ref::<StateStore<T>>().unwrap() as *const StateStore<T>;
         unsafe {
             let ss = store as *mut StateStore<T>;
-            (*ss).request_update(self, new_value);
+            (*ss).request_update_map(self, mapper);
         };
     }
 
-    pub fn use_state<T: 'static + PartialEq + Clone>(&mut self, default_value: T) -> (T, Rc<dyn Fn(&mut Scope, T)->()>) {
+    pub fn use_state<T: 'static + PartialEq + Clone>(&mut self, default_value: T) -> (T, Rc<dyn Fn(&mut Scope, Box<dyn FnOnce(&T) -> T>)->()>) {
         if self.has_init {
             let store = self.state_hooks.get().downcast_ref::<StateStore<T>>().unwrap();
             (store.get(), store.update_func.clone())
