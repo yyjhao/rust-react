@@ -187,7 +187,7 @@ impl<VNativeNode> ContextMount<VNativeNode> {
     }
 
     fn update(&mut self, n: Box<dyn VContextT<VNativeNode>>) {
-        if n.def_id() == self.context_link.context_store.try_borrow().unwrap().def_id() {
+        if n.is_same_context(self.context_link.context_store.clone()) {
             let children = n.push_value(self.context_link.context_store.clone());
             self.native_mount_factory.reset_scanner();
             for r in self.context_link.renderers.try_borrow().unwrap().iter() {

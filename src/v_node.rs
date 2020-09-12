@@ -36,10 +36,10 @@ impl Updater {
 
 pub type RefObject<T> = Rc<RefCell<Option<T>>>;
 
-pub trait ContextDef<T> {
-    fn make_context(&self, initial_value: T) -> ContextStore<T>;
-    fn def_id(&self) -> TypeId;
-}
+// pub trait ContextDef<T> {
+//     fn make_context(&self, initial_value: T) -> ContextStore<T>;
+//     fn def_id(&self) -> TypeId;
+// }
 
 pub struct ContextConsumerHandle<T: 'static> {
     store: Rc<RefCell<dyn ContextStoreT>>,
@@ -89,6 +89,11 @@ impl<T: Clone + PartialEq + 'static> StateStoreT for StateStore<T> {
 
 }
 
+static CONTEXT_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
+fn get_id() -> usize { CONTEXT_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
+
+pub type ContextDef<T> = std::marker::PhantomData<T>;
+
 pub trait Renderer {
     fn maybe_update(&mut self);
     fn scope_mut(&mut self) -> &mut Scope;
@@ -96,28 +101,22 @@ pub trait Renderer {
 }
 
 pub struct ContextStore<T: 'static> {
-    def_id: TypeId,
     value: T
 }
 
 impl<T: 'static> ContextStore<T> {
-    pub fn new(def_id: TypeId, initial_value: T) -> ContextStore<T> {
+    pub fn new(initial_value: T) -> ContextStore<T> {
         ContextStore {
-            def_id,
             value: initial_value
         }
     }
 }
 
 pub trait ContextStoreT: Downcast {
-    fn def_id(&self) -> TypeId;
 }
 impl_downcast!(ContextStoreT);
 
 impl<T: 'static> ContextStoreT for ContextStore<T> {
-    fn def_id(&self) -> TypeId {
-        self.def_id
-    }
 }
 
 pub type ContextLink = Option<Rc<ContextNode>>;
@@ -400,7 +399,7 @@ impl Scope {
         }
     }
 
-    pub fn use_context<T>(&mut self, context_def: &'static dyn ContextDef<T>) -> Rc<ContextConsumerHandle<T>> {
+    pub fn use_context<T>(&mut self, context_def: &ContextDef<T>) -> Rc<ContextConsumerHandle<T>> {
         if self.has_init {
             Rc::downcast::<ContextConsumerHandle<T>>(self.ref_hooks.get().clone()).unwrap()
         } else {
@@ -474,15 +473,12 @@ impl Scope {
         }
     }
 
-    fn create_context_handle<T>(&self, context_def: &'static dyn ContextDef<T>) -> ContextConsumerHandle<T> {
+    fn create_context_handle<T>(&self, context_def: &ContextDef<T>) -> ContextConsumerHandle<T> {
         let context_link = &self.context_link;
         loop {
             let cl = context_link.as_ref().unwrap();
             let store_copy = cl.context_store.clone();
             let store = cl.context_store.try_borrow().unwrap();
-            if store.def_id() != context_def.def_id() {
-                continue
-            }
             if store.downcast_ref::<ContextStore<T>>().is_some() {
                 cl.renderers.try_borrow_mut().unwrap().push(self.renderer.clone());
                 return ContextConsumerHandle {
@@ -545,7 +541,7 @@ pub struct VContextS<VNativeNode: 'static> {
 pub trait VContextT<VNativeNode: 'static> {
     fn take(self: Box<Self>) -> VContextS<VNativeNode>;
     fn push_value(self: Box<Self>, store: Rc<RefCell<dyn ContextStoreT>>) -> VNode<VNativeNode>;
-    fn def_id(&self) -> TypeId;
+    fn is_same_context(self: &Self, store: Rc<RefCell<dyn ContextStoreT>>) -> bool;
 }
 
 impl<VNativeNode, T> VContextT<VNativeNode> for VContext<VNativeNode, T> {
@@ -563,8 +559,9 @@ impl<VNativeNode, T> VContextT<VNativeNode> for VContext<VNativeNode, T> {
         };
         *self.children
     }
-    fn def_id(&self) -> TypeId {
-        self.store.def_id()
+
+    fn is_same_context(self: &Self, store: Rc<RefCell<dyn ContextStoreT>>) -> bool {
+        store.try_borrow_mut().unwrap().downcast_ref::<ContextStore<T>>().is_some()
     }
 }
 
@@ -593,10 +590,9 @@ pub fn h<VNativeNode, Props: 'static, Ref: 'static>(component_def: ComponentDef<
         })
 }
 
-pub fn ct<T, VNativeNode: 'static>(context_def: &'static dyn ContextDef<T>, value: T, children: VNode<VNativeNode>) -> VNode<VNativeNode> {
+pub fn ct<T: 'static, VNativeNode: 'static>(context_def: &ContextDef<T>, value: T, children: VNode<VNativeNode>) -> VNode<VNativeNode> {
     VNode::Context(Box::new(VContext {
         store: ContextStore {
-            def_id: context_def.def_id(),
             value,
         },
         children: Box::new(children),

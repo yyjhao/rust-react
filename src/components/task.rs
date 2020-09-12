@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 use crate::v_node::{Scope, RefObject, h, ct, CallbackHandle};
 use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
+use crate::components::style_context;
 use wasm_bindgen::JsCast;
 use im_rc::Vector;
 
@@ -15,6 +16,8 @@ pub fn component_def(scope: &mut Scope, (task, on_task_updated): &(Task, Callbac
     let on_task_updated_2 = on_task_updated.clone();
     let id = task.id;
     let completed = task.completed;
+    let s = scope.use_context(&style_context::def);
+    let style = s.get();
     hd(VDomElement {
         tag_name: "div",
         listeners: vec![
@@ -57,7 +60,15 @@ pub fn component_def(scope: &mut Scope, (task, on_task_updated): &(Task, Callbac
             "display" => String::from("flex"),
             "align-items" => String::from("center"),
             "padding" => String::from("10px"),
-            "font-size" => String::from("24px")
+            "font-size" => String::from("24px"),
+            "background" => String::from(match *style {
+                style_context::StyleType::Dark => "#555",
+                style_context::StyleType::Light => "#ddd",
+            }),
+            "color" => String::from(match *style {
+                style_context::StyleType::Dark => "#ddd",
+                style_context::StyleType::Light => "#555",
+            })
         }
     })
 }
