@@ -168,7 +168,7 @@ impl<VNativeNode> ContextMount<VNativeNode> {
             native_mount_factory: native_mount_factory.component_native_mount_factory(),
             context_link: Rc::new(ContextNode {
                 parent: context_link,
-                context_store: context.store,
+                value: context.value,
                 renderers: RefCell::new(vec![])
             }),
             children_mount: None
@@ -187,8 +187,8 @@ impl<VNativeNode> ContextMount<VNativeNode> {
     }
 
     fn update(&mut self, n: Box<dyn VContextT<VNativeNode>>) {
-        if n.is_same_context(self.context_link.context_store.clone()) {
-            let children = n.push_value(self.context_link.context_store.clone());
+        if n.is_same_context(self.context_link.value.clone()) {
+            let children = n.push_value(self.context_link.value.clone());
             self.native_mount_factory.reset_scanner();
             for r in self.context_link.renderers.try_borrow().unwrap().iter() {
                 crate::v_node::update(r, |scope| {
@@ -202,7 +202,7 @@ impl<VNativeNode> ContextMount<VNativeNode> {
             self.unmount();
             self.context_link = Rc::new(ContextNode {
                 parent,
-                context_store: node.store,
+                value: node.value,
                 renderers: RefCell::new(vec![])
             });
             self.rerender(*node.children);

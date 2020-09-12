@@ -35,13 +35,13 @@ impl Updater {
 pub type RefObject<T> = Rc<RefCell<Option<T>>>;
 
 pub struct ContextConsumerHandle<T: 'static> {
-    store: Rc<RefCell<dyn ContextStoreT>>,
+    value: Rc<RefCell<dyn Any>>,
     phantom: std::marker::PhantomData<T>,
 }
 
 impl<T> ContextConsumerHandle<T> {
     pub fn get(&self) -> Ref<T> {
-        Ref::map(self.store.try_borrow().unwrap(), |s| {&s.downcast_ref::<ContextStore<T>>().unwrap().value})
+        Ref::map(self.value.try_borrow().unwrap(), |s| {s.downcast_ref::<T>().unwrap()})
     }
 }
 
@@ -84,22 +84,11 @@ pub trait Renderer {
     fn updater(&self) -> Rc<RefCell<Updater>>;
 }
 
-pub struct ContextStore<T: 'static> {
-    value: T
-}
-
-pub trait ContextStoreT: Downcast {
-}
-impl_downcast!(ContextStoreT);
-
-impl<T: 'static> ContextStoreT for ContextStore<T> {
-}
-
 pub type ContextLink = Option<Rc<ContextNode>>;
 
 pub struct ContextNode {
     pub parent: ContextLink,
-    pub context_store: Rc<RefCell<dyn ContextStoreT>>,
+    pub value: Rc<RefCell<dyn Any>>,
     pub renderers: RefCell<Vec<Rc<RefCell<dyn Renderer>>>>
 }
 
@@ -453,12 +442,12 @@ impl Scope {
         let context_link = &self.context_link;
         loop {
             let cl = context_link.as_ref().unwrap();
-            let store_copy = cl.context_store.clone();
-            let store = cl.context_store.try_borrow().unwrap();
-            if store.downcast_ref::<ContextStore<T>>().is_some() {
+            let store_copy = cl.value.clone();
+            let store = cl.value.try_borrow().unwrap();
+            if store.downcast_ref::<T>().is_some() {
                 cl.renderers.try_borrow_mut().unwrap().push(self.renderer.clone());
                 return ContextConsumerHandle {
-                    store: store_copy,
+                    value: store_copy,
                     phantom: std::marker::PhantomData,
                 }
             }
@@ -514,39 +503,39 @@ impl<Model: ComponentModel<VNativeNode, Ref> + 'static, Ref: 'static, VNativeNod
 }
 
 pub struct VContext<VNativeNode: 'static, T: 'static> {
-    pub store: ContextStore<T>,
+    pub value: T,
     pub children: Box<VNode<VNativeNode>>
 }
 
 pub struct VContextS<VNativeNode: 'static> {
-    pub store: Rc<RefCell<dyn ContextStoreT>>,
+    pub value: Rc<RefCell<dyn Any>>,
     pub children: Box<VNode<VNativeNode>>
 }
 
 pub trait VContextT<VNativeNode: 'static> {
     fn take(self: Box<Self>) -> VContextS<VNativeNode>;
-    fn push_value(self: Box<Self>, store: Rc<RefCell<dyn ContextStoreT>>) -> VNode<VNativeNode>;
-    fn is_same_context(self: &Self, store: Rc<RefCell<dyn ContextStoreT>>) -> bool;
+    fn push_value(self: Box<Self>, store: Rc<RefCell<dyn Any>>) -> VNode<VNativeNode>;
+    fn is_same_context(self: &Self, store: Rc<RefCell<dyn Any>>) -> bool;
 }
 
 impl<VNativeNode, T> VContextT<VNativeNode> for VContext<VNativeNode, T> {
     fn take(self: Box<Self>) -> VContextS<VNativeNode> {
         VContextS {
-            store: Rc::new(RefCell::new(self.store)),
+            value: Rc::new(RefCell::new(self.value)),
             children: self.children
         }
     }
-    fn push_value(self: Box<Self>, store: Rc<RefCell<dyn ContextStoreT>>) -> VNode<VNativeNode> {
-        let s = store.try_borrow_mut().unwrap().downcast_ref::<ContextStore<T>>().unwrap() as *const ContextStore<T>;
+    fn push_value(self: Box<Self>, store: Rc<RefCell<dyn Any>>) -> VNode<VNativeNode> {
+        let s = store.try_borrow_mut().unwrap().downcast_ref::<T>().unwrap() as *const T;
         unsafe {
-            let ss = s as *mut ContextStore<T>;
-            (*ss).value = self.store.value
+            let ss = s as *mut T;
+            (*ss) = self.value
         };
         *self.children
     }
 
-    fn is_same_context(self: &Self, store: Rc<RefCell<dyn ContextStoreT>>) -> bool {
-        store.try_borrow_mut().unwrap().downcast_ref::<ContextStore<T>>().is_some()
+    fn is_same_context(self: &Self, store: Rc<RefCell<dyn Any>>) -> bool {
+        store.try_borrow_mut().unwrap().downcast_ref::<T>().is_some()
     }
 }
 
@@ -577,9 +566,7 @@ pub fn h<VNativeNode, Model: ComponentModel<VNativeNode, Ref> + 'static, Ref: 's
 
 pub fn ct<T: 'static, VNativeNode: 'static>(value: T, children: VNode<VNativeNode>) -> VNode<VNativeNode> {
     VNode::Context(Box::new(VContext {
-        store: ContextStore {
-            value,
-        },
+        value,
         children: Box::new(children),
     }))
 }
