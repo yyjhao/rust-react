@@ -52,8 +52,7 @@ pub fn component_def(scope: &mut Scope, _props: &(), _ref_object: &RefObject<()>
     let (style, set_style) = scope.use_state(style_context::StyleType::Light);
     let s = style.clone();
     let s2 = style.clone();
-    ct(&style_context::def,
-        style,
+    ct(style,
         *ordered_children(vec![
             hd(VDomElement {
                 tag_name: "div",

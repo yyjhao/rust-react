@@ -36,11 +36,6 @@ impl Updater {
 
 pub type RefObject<T> = Rc<RefCell<Option<T>>>;
 
-// pub trait ContextDef<T> {
-//     fn make_context(&self, initial_value: T) -> ContextStore<T>;
-//     fn def_id(&self) -> TypeId;
-// }
-
 pub struct ContextConsumerHandle<T: 'static> {
     store: Rc<RefCell<dyn ContextStoreT>>,
     phantom: std::marker::PhantomData<T>,
@@ -88,9 +83,6 @@ impl_downcast!(StateStoreT);
 impl<T: Clone + PartialEq + 'static> StateStoreT for StateStore<T> {
 
 }
-
-static CONTEXT_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
-fn get_id() -> usize { CONTEXT_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
 
 pub type ContextDef<T> = std::marker::PhantomData<T>;
 
@@ -590,7 +582,7 @@ pub fn h<VNativeNode, Props: 'static, Ref: 'static>(component_def: ComponentDef<
         })
 }
 
-pub fn ct<T: 'static, VNativeNode: 'static>(context_def: &ContextDef<T>, value: T, children: VNode<VNativeNode>) -> VNode<VNativeNode> {
+pub fn ct<T: 'static, VNativeNode: 'static>(value: T, children: VNode<VNativeNode>) -> VNode<VNativeNode> {
     VNode::Context(Box::new(VContext {
         store: ContextStore {
             value,

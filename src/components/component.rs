@@ -34,7 +34,7 @@ pub fn component_def(scope: &mut Scope, _props: &Props, _ref_object: &RefObject<
         })
     });
 
-    ct(&test_context::def, test_context::ContextType {
+    ct(test_context::ContextType {
         // name: String::from(if *updated_val { "a" } else { "b" }),
         name: String::from("context"),
         count: if updated_val { 1 } else { 0 }
