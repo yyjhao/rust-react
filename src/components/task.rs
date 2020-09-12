@@ -16,7 +16,7 @@ pub fn component_def(scope: &mut Scope, (task, on_task_updated): &(Task, Callbac
     let on_task_updated_2 = on_task_updated.clone();
     let id = task.id;
     let completed = task.completed;
-    let s = scope.use_context(&style_context::def);
+    let s = scope.use_context::<style_context::StyleType>();
     let style = s.get();
     hd(VDomElement {
         tag_name: "div",

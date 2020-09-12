@@ -96,14 +96,6 @@ pub struct ContextStore<T: 'static> {
     value: T
 }
 
-impl<T: 'static> ContextStore<T> {
-    pub fn new(initial_value: T) -> ContextStore<T> {
-        ContextStore {
-            value: initial_value
-        }
-    }
-}
-
 pub trait ContextStoreT: Downcast {
 }
 impl_downcast!(ContextStoreT);
@@ -391,11 +383,11 @@ impl Scope {
         }
     }
 
-    pub fn use_context<T>(&mut self, context_def: &ContextDef<T>) -> Rc<ContextConsumerHandle<T>> {
+    pub fn use_context<T>(&mut self) -> Rc<ContextConsumerHandle<T>> {
         if self.has_init {
             Rc::downcast::<ContextConsumerHandle<T>>(self.ref_hooks.get().clone()).unwrap()
         } else {
-            let handle = Rc::new(self.create_context_handle(context_def));
+            let handle = Rc::new(self.create_context_handle::<T>());
             self.ref_hooks.hooks.push(handle.clone());
             handle
         }
@@ -465,7 +457,7 @@ impl Scope {
         }
     }
 
-    fn create_context_handle<T>(&self, context_def: &ContextDef<T>) -> ContextConsumerHandle<T> {
+    fn create_context_handle<T>(&self) -> ContextConsumerHandle<T> {
         let context_link = &self.context_link;
         loop {
             let cl = context_link.as_ref().unwrap();

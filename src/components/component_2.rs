@@ -7,7 +7,7 @@ use crate::test_context;
 
 pub fn component_def(scope: &mut Scope, _props: &(), ref_object: &RefObject<Ref>) -> VDomNode {
     let (content_val, set_content_val) = scope.use_state(String::from("initial"));
-    let some_context = scope.use_context(&test_context::def);
+    let some_context = scope.use_context::<test_context::ContextType>();
 
     let count = some_context.get().count;
     scope.use_effect(move || {
