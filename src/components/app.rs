@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 use std::rc::Rc;
-use crate::scope::{ComponentScope, RefObject};
+use crate::scope::{ComponentScope, RefObject, NilRef};
 use crate::v_node::{h, ct, ComponentModel};
 use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
 use im_rc::vector::Vector;
@@ -39,7 +39,7 @@ pub struct Model {
 }
 
 impl ComponentModel<VDom, ()> for Model {
-    fn render(&self, scope: &mut ComponentScope, _ref_object: &RefObject<()>) -> VDomNode {
+    fn render(&self, scope: &mut ComponentScope, _: &NilRef) -> VDomNode {
         let (tasks, tasks_handle) = scope.use_state(Vector::<Rc<task::Task>>::new());
         let (view_type, view_type_handle) = scope.use_state(root::ViewType::All);
         let id = scope.use_ref::<usize>();
@@ -109,7 +109,7 @@ impl ComponentModel<VDom, ()> for Model {
                     on_view_updated: scope.use_callback(move |scope, view_type| {
                         view_type_handle.update(scope, view_type);
                     })
-                }, RefObject::new())
+                }, None)
             ])
         )
     }

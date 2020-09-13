@@ -14,4 +14,4 @@ pub use context::{ContextLink, ContextNode, ContextNodeT, clone_context_link};
 pub use callback::CallbackHandle;
 pub use updater::{Updater, update};
 pub use state::StateHandle;
-pub use ref_object::RefObject;
+pub use ref_object::{RefObject, NilRef};

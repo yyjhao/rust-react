@@ -2,6 +2,8 @@ use downcast_rs::Downcast;
 use std::rc::Rc;
 use std::cell::{RefCell, RefMut};
 
+pub type NilRef = Option<RefObject<()>>;
+
 pub struct RefObject<T> {
     inner: Rc<RefCell<Option<T>>>
 }

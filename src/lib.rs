@@ -26,7 +26,7 @@ pub fn start() -> () {
         Box::new(VComponentElement::new(
             app::Model {
             },
-            RefObject::new()
+           None 
         )),
         document.body().unwrap().query_selector("#mount").unwrap().unwrap().dyn_into::<web_sys::HtmlElement>().unwrap(), Rc::new(RefCell::new(Updater::new())));
 }

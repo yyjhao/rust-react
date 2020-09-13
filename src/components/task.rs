@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 use crate::v_node::ComponentModel;
-use crate::scope::{ComponentScope, RefObject, CallbackHandle};
+use crate::scope::{ComponentScope, RefObject, CallbackHandle, NilRef};
 use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
 use crate::components::style_context;
 use std::rc::Rc;
@@ -24,7 +24,7 @@ impl PartialEq for Model {
 }
 
 impl ComponentModel<VDom, ()> for Model {
-    fn render(&self, scope: &mut ComponentScope, _ref_object: &RefObject<()>) -> VDomNode {
+    fn render(&self, scope: &mut ComponentScope, _ref_object: &NilRef) -> VDomNode {
         let task = &self.task;
         let on_update_task = &self.on_update_task;
         let id = task.id;

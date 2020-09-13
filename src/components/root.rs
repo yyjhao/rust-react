@@ -1,5 +1,5 @@
 use crate::v_node::{h, ComponentModel};
-use crate::scope::{ComponentScope, RefObject, CallbackHandle};
+use crate::scope::{ComponentScope, RefObject, CallbackHandle, NilRef};
 use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
 use crate::components::task;
 use std::cell::RefCell;
@@ -25,7 +25,7 @@ pub struct Props {
 }
 
 impl ComponentModel<VDom, ()> for Props {
-    fn render(&self, scope: &mut ComponentScope, _ref_object: &RefObject<()>) -> VDomNode {
+    fn render(&self, scope: &mut ComponentScope, _ref_object: &NilRef) -> VDomNode {
         let (new_task_name, new_task_name_handle) = scope.use_state(String::from(""));
         let new_task_name_2 = new_task_name.clone();
         let on_add_task = self.on_add_task.clone();
@@ -109,7 +109,7 @@ impl ComponentModel<VDom, ()> for Props {
                     (task.id.to_string(), h(task::Model {
                         task: task.clone(), 
                         on_update_task: self.on_task_updated.clone()
-                    }, RefObject::new()))
+                    }, None))
                 }).collect()),
             ]),
             ref_object: None

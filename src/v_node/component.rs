@@ -4,7 +4,7 @@ use crate::v_node::v_node::VNode;
 use crate::v_node::node_comparison::NodeComparisonResult;
 
 pub trait ComponentModel<VNativeNode, Ref>: PartialEq {
-    fn render(&self, scope: &mut ComponentScope, self_ref: &RefObject<Ref>) -> VNode<VNativeNode>;
+    fn render(&self, scope: &mut ComponentScope, self_ref: &Option<RefObject<Ref>>) -> VNode<VNativeNode>;
     fn name(&self) -> &'static str {
         "component"
     }
@@ -12,12 +12,12 @@ pub trait ComponentModel<VNativeNode, Ref>: PartialEq {
 
 pub struct VComponentElement<VNativeNode, Model, Ref> where VNativeNode: 'static, Model: ComponentModel<VNativeNode, Ref> {
     pub component_model: Model,
-    pub ref_object: RefObject<Ref>,
+    pub ref_object: Option<RefObject<Ref>>,
     phantom: std::marker::PhantomData<VNativeNode>
 }
 
 impl<VNativeNode, Model, Ref> VComponentElement<VNativeNode, Model, Ref> where VNativeNode: 'static, Model: ComponentModel<VNativeNode, Ref> {
-    pub fn new(model: Model, ref_object: RefObject<Ref>) -> VComponentElement<VNativeNode, Model, Ref> {
+    pub fn new(model: Model, ref_object: Option<RefObject<Ref>>) -> VComponentElement<VNativeNode, Model, Ref> {
         VComponentElement {
             component_model: model,
             ref_object,
