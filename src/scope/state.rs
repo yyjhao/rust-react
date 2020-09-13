@@ -7,6 +7,12 @@ pub struct StateHandle<T: Clone + PartialEq + 'static> {
     phantom: std::marker::PhantomData<T>
 }
 
+impl<T: Clone + PartialEq + 'static> PartialEq for StateHandle<T> {
+    fn eq(&self, other: &Self) -> bool {
+       self.index == other.index
+    }
+}
+
 impl<T: Clone + PartialEq + 'static> Copy for StateHandle<T> {
 
 }

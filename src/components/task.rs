@@ -33,9 +33,9 @@ impl ComponentModel<VDom, ()> for Model {
         hd(VDomElement {
             tag_name: "div",
             listeners: vec![
-                ("click", scope.use_callback::<web_sys::Event>(Box::new(enclose! { (on_update_task) move |_, _| {
+                ("click", scope.use_callback(enclose! { (on_update_task) move |_, _| {
                     on_update_task.trigger((id, !completed));
-                }})))
+                }}))
             ],
             attributes: std::collections::HashMap::new(),
             children: ordered_children(vec![

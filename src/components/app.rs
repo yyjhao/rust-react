@@ -42,7 +42,6 @@ impl ComponentModel<VDom, ()> for Model {
     fn render(&self, scope: &mut ComponentScope, _ref_object: &RefObject<()>) -> VDomNode {
         let (tasks, tasks_handle) = scope.use_state(Vector::<Rc<task::Task>>::new());
         let (view_type, view_type_handle) = scope.use_state(root::ViewType::All);
-        let tasks_2 = tasks.clone();
         let id = scope.use_ref::<usize>();
         let tasks_for_display = match view_type {
             root::ViewType::All => tasks,
@@ -61,14 +60,14 @@ impl ComponentModel<VDom, ()> for Model {
                 hd(VDomElement {
                     tag_name: "div",
                     listeners: vec![
-                        ("click", scope.use_callback(Box::new(move |scope, _| {
+                        ("click", scope.use_callback(move |scope, _| {
                             style_handle.update_map(scope, |s| {
                                 match s {
                                     style_context::StyleType::Light => style_context::StyleType::Dark,
                                     style_context::StyleType::Dark => style_context::StyleType::Light
                                 }
                             })
-                        })))
+                        }))
                     ],
                     attributes: std::collections::HashMap::new(),
                     children: ordered_children(vec![ t(match s2 {
@@ -81,19 +80,22 @@ impl ComponentModel<VDom, ()> for Model {
                 h(root::Props {
                     tasks: tasks_for_display,
                     current_view_type: view_type,
-                    on_add_task: scope.use_callback(Box::new(move |scope, name| {
-                        let mut new_tasks = tasks_2.clone();
-                        let mut id_handle = id.try_borrow_mut().unwrap();
-                        let current_id = id_handle.unwrap_or(0);
-                        *id_handle = Some(current_id + 1);
-                        new_tasks.push_back(Rc::new(task::Task {
-                            id: current_id,
-                            name,
-                            completed: false,
-                        }));
-                        tasks_handle.update(scope, new_tasks)
-                    })),
-                    on_task_updated: scope.use_callback(Box::new(move |scope, (id, completed)| {
+                    on_add_task: scope.use_callback_memo(Rc::new(|input: (crate::scope::RefObject<usize>, crate::scope::StateHandle<im_rc::vector::Vector<std::rc::Rc<crate::components::task::Task>>>), scope, name| {
+                        let (id, tasks_handle) = input;
+                        tasks_handle.update_map(scope, |tasks| {
+                            let mut new_tasks = tasks.clone();
+                            let mut id_handle = id.borrow_mut();
+                            let current_id = id_handle.unwrap_or(0);
+                            *id_handle = Some(current_id + 1);
+                            new_tasks.push_back(Rc::new(task::Task {
+                                id: current_id,
+                                name,
+                                completed: false,
+                            }));
+                            new_tasks
+                        })
+                    }), (id.clone(), tasks_handle)),
+                    on_task_updated: scope.use_callback_memo(Rc::new(|tasks_handle: crate::scope::StateHandle<im_rc::vector::Vector<std::rc::Rc<crate::components::task::Task>>>, scope, (id, completed)| {
                         tasks_handle.update_map(scope, |tasks| {
                             let old_task = tasks.get(id).unwrap();
                             let new_task = task::Task {
@@ -103,11 +105,11 @@ impl ComponentModel<VDom, ()> for Model {
                             };
                             tasks.update(id, Rc::new(new_task))
                         })
-                    })),
-                    on_view_updated: scope.use_callback(Box::new(move |scope, view_type| {
+                    }), tasks_handle),
+                    on_view_updated: scope.use_callback(move |scope, view_type| {
                         view_type_handle.update(scope, view_type);
-                    }))
-                }, std::rc::Rc::new(RefCell::new(None)))
+                    })
+                }, RefObject::new())
             ])
         )
     }

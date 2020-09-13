@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use components::{app};
 use std::rc::Rc;
 use crate::v_node::VComponentElement;
-use crate::scope::Updater;
+use crate::scope::{Updater, RefObject};
 
 mod v_node;
 #[macro_use]
@@ -26,7 +26,7 @@ pub fn start() -> () {
         Box::new(VComponentElement::new(
             app::Model {
             },
-            std::rc::Rc::new(RefCell::new(None))
+            RefObject::new()
         )),
         document.body().unwrap().query_selector("#mount").unwrap().unwrap().dyn_into::<web_sys::HtmlElement>().unwrap(), Rc::new(RefCell::new(Updater::new())));
 }

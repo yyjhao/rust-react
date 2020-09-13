@@ -52,16 +52,16 @@ impl ComponentModel<VDom, ()> for Props {
                 hd(VDomElement {
                     tag_name: "input",
                     listeners: vec![
-                        ("input", scope.use_callback(Box::new(move |scope, event| {
+                        ("input", scope.use_callback(move |scope, event: web_sys::Event| {
                             new_task_name_handle.update(scope, event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value())
-                        }))),
-                        ("keydown", scope.use_callback(Box::new(move |scope, event| {
+                        })),
+                        ("keydown", scope.use_callback(move |scope, event: web_sys::Event| {
                             let key_code = event.dyn_into::<web_sys::KeyboardEvent>().unwrap().key_code();
                             if key_code == 13 && new_task_name.len() > 0 {
                                 new_task_name_handle.update(scope, String::from(""));
                                 on_add_task.trigger(new_task_name.clone());
                             }
-                        })))
+                        }))
                     ],
                     children: Box::new(VDomNode::Fragment(vec![])),
                     attributes: map!{
@@ -85,15 +85,15 @@ impl ComponentModel<VDom, ()> for Props {
                     ],
                     attributes: std::collections::HashMap::new(),
                     children: ordered_children(vec![
-                        view_select(false, String::from("All"), scope.use_callback(Box::new(move |_, _| {
+                        view_select(false, String::from("All"), scope.use_callback(move |_, _| {
                             on_view_updated_1.trigger(ViewType::All)
-                        })), self.current_view_type == ViewType::All),
-                        view_select(false, String::from("Completed"), scope.use_callback(Box::new(move |_, _| {
+                        }), self.current_view_type == ViewType::All),
+                        view_select(false, String::from("Completed"), scope.use_callback(move |_, _| {
                             on_view_updated_2.trigger(ViewType::Completed)
-                        })), self.current_view_type == ViewType::Completed),
-                        view_select(true, String::from("Incomplete"), scope.use_callback(Box::new(move |_, _| {
+                        }), self.current_view_type == ViewType::Completed),
+                        view_select(true, String::from("Incomplete"), scope.use_callback(move |_, _| {
                             on_view_updated_3.trigger(ViewType::Incomplete)
-                        })), self.current_view_type == ViewType::Incomplete),
+                        }), self.current_view_type == ViewType::Incomplete),
                     ]),
                     ref_object: None,
                     style: map! {
@@ -109,7 +109,7 @@ impl ComponentModel<VDom, ()> for Props {
                     (task.id.to_string(), h(task::Model {
                         task: task.clone(), 
                         on_update_task: self.on_task_updated.clone()
-                    }, std::rc::Rc::new(RefCell::new(None))))
+                    }, RefObject::new()))
                 }).collect()),
             ]),
             ref_object: None
