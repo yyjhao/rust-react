@@ -26,8 +26,7 @@ pub struct Props {
 
 impl ComponentModel<VDom, ()> for Props {
     fn render(&self, scope: &mut ComponentScope, _ref_object: &RefObject<()>) -> VDomNode {
-        let (new_task_name, set_new_task_name) = scope.use_state(String::from(""));
-        let set_new_task_name_2 = set_new_task_name.clone();
+        let (new_task_name, new_task_name_handle) = scope.use_state(String::from(""));
         let new_task_name_2 = new_task_name.clone();
         let on_add_task = self.on_add_task.clone();
         let on_view_updated_1 = self.on_view_updated.clone();
@@ -54,12 +53,12 @@ impl ComponentModel<VDom, ()> for Props {
                     tag_name: "input",
                     listeners: vec![
                         ("input", scope.use_callback(Box::new(move |scope, event| {
-                            set_new_task_name(scope, Box::new(move |_| { event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value()}))
+                            new_task_name_handle.update(scope, event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value())
                         }))),
                         ("keydown", scope.use_callback(Box::new(move |scope, event| {
                             let key_code = event.dyn_into::<web_sys::KeyboardEvent>().unwrap().key_code();
                             if key_code == 13 && new_task_name.len() > 0 {
-                                set_new_task_name_2(scope, Box::new(|_| { String::from("") }));
+                                new_task_name_handle.update(scope, String::from(""));
                                 on_add_task.trigger(new_task_name.clone());
                             }
                         })))

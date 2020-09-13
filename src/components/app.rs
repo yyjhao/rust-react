@@ -40,10 +40,9 @@ pub struct Model {
 
 impl ComponentModel<VDom, ()> for Model {
     fn render(&self, scope: &mut ComponentScope, _ref_object: &RefObject<()>) -> VDomNode {
-        let (tasks, set_tasks) = scope.use_state(Vector::<Rc<task::Task>>::new());
-        let (view_type, set_view_type) = scope.use_state(root::ViewType::All);
+        let (tasks, tasks_handle) = scope.use_state(Vector::<Rc<task::Task>>::new());
+        let (view_type, view_type_handle) = scope.use_state(root::ViewType::All);
         let tasks_2 = tasks.clone();
-        let set_tasks_2 = set_tasks.clone();
         let id = scope.use_ref::<usize>();
         let tasks_for_display = match view_type {
             root::ViewType::All => tasks,
@@ -55,7 +54,7 @@ impl ComponentModel<VDom, ()> for Model {
             root::ViewType::Incomplete => "incomplete",
             root::ViewType::Completed => "completed"
         }));
-        let (style, set_style) = scope.use_state(style_context::StyleType::Light);
+        let (style, style_handle) = scope.use_state(style_context::StyleType::Light);
         let s2 = style.clone();
         ct(style,
             *ordered_children(vec![
@@ -63,12 +62,12 @@ impl ComponentModel<VDom, ()> for Model {
                     tag_name: "div",
                     listeners: vec![
                         ("click", scope.use_callback(Box::new(move |scope, _| {
-                            set_style(scope, Box::new(|s| {
+                            style_handle.update_map(scope, |s| {
                                 match s {
                                     style_context::StyleType::Light => style_context::StyleType::Dark,
                                     style_context::StyleType::Dark => style_context::StyleType::Light
                                 }
-                            }))
+                            })
                         })))
                     ],
                     attributes: std::collections::HashMap::new(),
@@ -92,10 +91,10 @@ impl ComponentModel<VDom, ()> for Model {
                             name,
                             completed: false,
                         }));
-                        set_tasks(scope, Box::new(|_| {new_tasks}))
+                        tasks_handle.update(scope, new_tasks)
                     })),
                     on_task_updated: scope.use_callback(Box::new(move |scope, (id, completed)| {
-                        set_tasks_2(scope, Box::new(move |tasks| {
+                        tasks_handle.update_map(scope, |tasks| {
                             let old_task = tasks.get(id).unwrap();
                             let new_task = task::Task {
                                 name: old_task.name.clone(),
@@ -103,10 +102,10 @@ impl ComponentModel<VDom, ()> for Model {
                                 completed,
                             };
                             tasks.update(id, Rc::new(new_task))
-                        }))
+                        })
                     })),
                     on_view_updated: scope.use_callback(Box::new(move |scope, view_type| {
-                        set_view_type(scope, Box::new(|_| {view_type}));
+                        view_type_handle.update(scope, view_type);
                     }))
                 }, std::rc::Rc::new(RefCell::new(None)))
             ])

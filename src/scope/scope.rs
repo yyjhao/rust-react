@@ -3,7 +3,7 @@ use std::cell::{RefCell, Cell};
 use std::any::Any;
 use crate::scope::renderer::Renderer;
 use crate::scope::context::{ContextLink, ContextConsumerHandleT, ContextConsumerHandle, ContextNode, clone_context_link};
-use crate::scope::state::{StateStoreT, StateStore};
+use crate::scope::state::{StateStoreT, StateStore, StateHandle};
 use crate::scope::effect::{EffectStoreT, EffectStore};
 use crate::scope::memo::{MemoStoreT, MemoStore};
 use crate::scope::callback::{CallbackHandle, CallbackStoreT, CallbackStore};
@@ -115,9 +115,18 @@ impl Scope {
         self.component_scope.callback_store.hooks[index] = store;
     }
 
-    pub fn update_state<T: 'static + PartialEq + Clone>(&mut self, index: usize, mapper: Box<dyn FnOnce(&T) -> T>) {
+    pub fn update_state_map<T: 'static + PartialEq + Clone, F: FnOnce(&T) -> T>(&mut self, index: usize, mapper: F) {
         let store = self.component_scope.state_hooks.hooks.get(index).unwrap().downcast_ref::<StateStore<T>>().unwrap();
         let new_value = mapper(&store.value);
+        if new_value != store.value {
+            self.mark_update();
+            let mut_store = self.component_scope.state_hooks.hooks.get_mut(index).unwrap().downcast_mut::<StateStore<T>>().unwrap();
+            mut_store.value = new_value;
+        }
+    }
+
+    pub fn update_state<T: 'static + PartialEq + Clone>(&mut self, index: usize, new_value: T) {
+        let store = self.component_scope.state_hooks.hooks.get(index).unwrap().downcast_ref::<StateStore<T>>().unwrap();
         if new_value != store.value {
             self.mark_update();
             let mut_store = self.component_scope.state_hooks.hooks.get_mut(index).unwrap().downcast_mut::<StateStore<T>>().unwrap();
@@ -172,15 +181,15 @@ impl ComponentScope {
         }
     }
 
-    pub fn use_state<T: 'static + PartialEq + Clone>(&mut self, default_value: T) -> (T, Rc<dyn Fn(&mut Scope, Box<dyn FnOnce(&T) -> T>)->()>) {
+    pub fn use_state<T: 'static + PartialEq + Clone>(&mut self, default_value: T) -> (T, StateHandle<T>) {
         if self.has_init {
             let store = self.state_hooks.get().downcast_ref::<StateStore<T>>().unwrap();
-            (store.value.clone(), store.update_func.clone())
+            (store.value.clone(), store.handle)
         } else {
             let store = StateStore::new(default_value.clone(), self.state_hooks.hooks.len());
-            let update_func = store.update_func.clone();
+            let handle = store.handle.clone();
             self.state_hooks.hooks.push(Box::new(store));
-            (default_value, update_func)
+            (default_value, handle)
         }
     }
 
