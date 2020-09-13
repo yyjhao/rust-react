@@ -2,10 +2,9 @@ use wasm_bindgen::prelude::*;
 use std::rc::Rc;
 use crate::scope::{ComponentScope, RefObject, NilRef};
 use crate::v_node::{h, ct, ComponentModel};
-use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
+use crate::dom::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
 use im_rc::vector::Vector;
 use crate::components::root;
-use std::cell::RefCell;
 use crate::components::task;
 use crate::components::style_context;
 

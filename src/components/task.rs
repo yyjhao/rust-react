@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 use crate::v_node::ComponentModel;
-use crate::scope::{ComponentScope, RefObject, CallbackHandle, NilRef};
-use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
+use crate::scope::{ComponentScope, CallbackHandle, NilRef};
+use crate::dom::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
 use crate::components::style_context;
 use std::rc::Rc;
 

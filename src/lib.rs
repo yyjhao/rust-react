@@ -10,8 +10,7 @@ use crate::scope::{Updater, RefObject};
 
 mod v_node;
 #[macro_use]
-mod v_dom_node;
-mod dom_renderer;
+mod dom;
 mod renderer;
 mod components;
 mod scope;
@@ -22,7 +21,7 @@ pub fn start() -> () {
     console_error_panic_hook::set_once();
     let window = web_sys::window().expect("no global `window` exists");
     let document = window.document().expect("should have a document on window");
-    crate::dom_renderer::mount_dom_component(
+    crate::dom::mount_dom_component(
         Box::new(VComponentElement::new(
             app::Model {
             },
