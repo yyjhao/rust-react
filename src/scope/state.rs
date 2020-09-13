@@ -3,7 +3,7 @@ use downcast_rs::Downcast;
 use crate::scope::scope::Scope;
 
 pub struct StateStore<T: Clone + PartialEq + 'static> {
-    value: T,
+    pub value: T,
     pub update_func: Rc<dyn Fn(&mut Scope, Box<dyn FnOnce(&T) -> T>)>
 }
 
@@ -15,18 +15,6 @@ impl<T: Clone + PartialEq + 'static> StateStore<T> {
                 scope.update_state(index, mapper)
             })
         }
-    }
-
-    pub fn get(&self) -> T {
-        self.value.clone()
-    }
-
-    pub fn request_update_map<F: FnOnce(&T) -> T>(&mut self, scope: &mut Scope, mapper: F) {
-        let new_value = mapper(&self.value);
-        if new_value != self.value {
-            scope.mark_update();
-        }
-        self.value = new_value;
     }
 }
 pub trait StateStoreT: Downcast {

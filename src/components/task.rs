@@ -1,5 +1,5 @@
 use crate::v_node::ComponentModel;
-use crate::scope::{Scope, RefObject, CallbackHandle};
+use crate::scope::{ComponentScope, RefObject, CallbackHandle};
 use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
 use crate::components::style_context;
 
@@ -11,7 +11,7 @@ pub struct Task {
 }
 
 impl ComponentModel<VDom, ()> for (Task, CallbackHandle<(usize, bool)>) {
-    fn render(&self, scope: &mut Scope, _ref_object: &RefObject<()>) -> VDomNode {
+    fn render(&self, scope: &mut ComponentScope, _ref_object: &RefObject<()>) -> VDomNode {
         let (task, on_task_updated) = self;
         let on_task_updated_2 = on_task_updated.clone();
         let id = task.id;

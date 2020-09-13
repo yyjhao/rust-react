@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use crate::scope::{Scope, RefObject};
+use crate::scope::{ComponentScope, RefObject};
 use crate::v_node::{h, ct, ComponentModel};
 use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
 use im_rc::vector::Vector;
@@ -37,7 +37,7 @@ pub struct Model {
 }
 
 impl ComponentModel<VDom, ()> for Model {
-    fn render(&self, scope: &mut Scope, _ref_object: &RefObject<()>) -> VDomNode {
+    fn render(&self, scope: &mut ComponentScope, _ref_object: &RefObject<()>) -> VDomNode {
         let (tasks, set_tasks) = scope.use_state(Vector::<task::Task>::new());
         let (view_type, set_view_type) = scope.use_state(root::ViewType::All);
         let tasks_2 = tasks.clone();

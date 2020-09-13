@@ -7,7 +7,7 @@ mod effect;
 mod memo;
 mod callback;
 
-pub use scope::{Scope, RefObject};
+pub use scope::{Scope, RefObject, ComponentScope};
 pub use renderer::Renderer;
 pub use context::{ContextLink, ContextNode, ContextNodeT, clone_context_link};
 pub use callback::CallbackHandle;

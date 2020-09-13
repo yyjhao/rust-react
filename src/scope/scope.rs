@@ -10,7 +10,6 @@ use crate::scope::callback::{CallbackHandle, CallbackStoreT, CallbackStore};
 
 pub type RefObject<T> = Rc<RefCell<Option<T>>>;
 
-
 pub struct HookList<Hook> {
     pub hooks: Vec<Hook>,
     current_index: usize,
@@ -36,6 +35,107 @@ impl<Hook> HookList<Hook> {
 }
 
 pub struct Scope {
+    pub component_scope: ComponentScope
+}
+
+impl Drop for Scope {
+    fn drop(&mut self) {
+        self.reset();
+    }
+}
+
+impl Scope {
+    pub fn new(renderer: Rc<RefCell<dyn Renderer>>, context_link: ContextLink) -> Scope {
+        Scope {
+            component_scope: ComponentScope {
+                update_flag: false,
+                renderer,
+                context_link,
+                callback_store: HookList::new(),
+                state_hooks: HookList::new(),
+                ref_hooks: HookList::new(),
+                effect_hooks: HookList::new(),
+                memo_hooks: HookList::new(),
+                context_hooks: HookList::new(),
+                has_init: false
+            }
+        }
+    }
+
+    pub fn reset(&mut self) {
+        let mut scope = &mut self.component_scope;
+        scope.state_hooks.clear();
+        scope.effect_hooks.clear();
+        scope.callback_store.clear();
+        scope.memo_hooks.clear();
+        scope.context_hooks.clear();
+        scope.ref_hooks.clear();
+        scope.has_init = false;
+    }
+
+    pub fn mark_update(&mut self) {
+        self.component_scope.update_flag = true;
+    }
+
+    pub fn clear_update(&mut self) {
+        self.component_scope.update_flag = false;
+    }
+
+    pub fn has_update(&self) -> bool {
+        self.component_scope.update_flag
+    }
+
+    pub fn effects_iter(&self) -> std::slice::Iter<Rc<dyn EffectStoreT>> {
+        self.component_scope.effect_hooks.hooks.iter()
+    }
+
+    pub fn clone_context_link(&self) -> ContextLink {
+        clone_context_link(&self.component_scope.context_link)
+    }
+
+    pub fn mark_start_render(&mut self) {
+        let mut scope = &mut self.component_scope;
+        scope.state_hooks.current_index = 0;
+        scope.effect_hooks.current_index = 0;
+        scope.ref_hooks.current_index = 0;
+        scope.context_hooks.current_index = 0;
+        scope.memo_hooks.current_index = 0;
+        scope.callback_store.current_index = 0;
+    }
+
+    pub fn mark_end_render(&mut self) {
+        self.component_scope.has_init = true;
+    }
+
+    pub fn trigger_callback<T: 'static>(&mut self, index: usize, arg: T) {
+        let store = std::mem::replace(&mut self.component_scope.callback_store.hooks[index], Box::new(())).downcast::<CallbackStore<T>>().ok().unwrap();
+        let callback = &store.func;
+        (callback)(self, arg);
+        self.component_scope.callback_store.hooks[index] = store;
+    }
+
+    pub fn update_state<T: 'static + PartialEq + Clone>(&mut self, index: usize, mapper: Box<dyn FnOnce(&T) -> T>) {
+        let store = self.component_scope.state_hooks.hooks.get(index).unwrap().downcast_ref::<StateStore<T>>().unwrap();
+        let new_value = mapper(&store.value);
+        if new_value != store.value {
+            self.mark_update();
+            let mut_store = self.component_scope.state_hooks.hooks.get_mut(index).unwrap().downcast_mut::<StateStore<T>>().unwrap();
+            mut_store.value = new_value;
+        }
+    }
+
+    pub fn cleanup(&mut self) {
+        let effect_hooks = std::mem::take(&mut self.component_scope.effect_hooks.hooks);
+        for e in effect_hooks.into_iter() {
+            e.cleanup();
+        }
+        for c in self.component_scope.context_hooks.hooks.iter() {
+            c.cleanup(self.component_scope.renderer.clone());
+        }
+    }
+}
+
+pub struct ComponentScope {
     update_flag: bool,
     renderer: Rc<RefCell<dyn Renderer>>,
     context_link: ContextLink,
@@ -48,78 +148,7 @@ pub struct Scope {
     has_init: bool
 }
 
-impl Drop for Scope {
-    fn drop(&mut self) {
-        self.reset();
-    }
-}
-
-impl Scope {
-    pub fn new(renderer: Rc<RefCell<dyn Renderer>>, context_link: ContextLink) -> Scope {
-        Scope {
-            update_flag: false,
-            renderer,
-            context_link,
-            callback_store: HookList::new(),
-            state_hooks: HookList::new(),
-            ref_hooks: HookList::new(),
-            effect_hooks: HookList::new(),
-            memo_hooks: HookList::new(),
-            context_hooks: HookList::new(),
-            has_init: false
-        }
-    }
-
-    pub fn reset(&mut self) {
-        self.state_hooks.clear();
-        self.effect_hooks.clear();
-        self.callback_store.clear();
-        self.memo_hooks.clear();
-        self.context_hooks.clear();
-        self.ref_hooks.clear();
-        self.has_init = false;
-    }
-
-    pub fn mark_update(&mut self) {
-        self.update_flag = true;
-    }
-
-    pub fn clear_update(&mut self) {
-        self.update_flag = false;
-    }
-
-    pub fn has_update(&self) -> bool {
-        self.update_flag
-    }
-
-    pub fn effects_iter(&self) -> std::slice::Iter<Rc<dyn EffectStoreT>> {
-        self.effect_hooks.hooks.iter()
-    }
-
-    pub fn clone_context_link(&self) -> ContextLink {
-        clone_context_link(&self.context_link)
-    }
-
-    pub fn mark_start_render(&mut self) {
-        self.state_hooks.current_index = 0;
-        self.effect_hooks.current_index = 0;
-        self.ref_hooks.current_index = 0;
-        self.context_hooks.current_index = 0;
-        self.memo_hooks.current_index = 0;
-        self.callback_store.current_index = 0;
-    }
-
-    pub fn mark_end_render(&mut self) {
-        self.has_init = true;
-    }
-
-    pub fn trigger_callback<T: 'static>(&mut self, index: usize, arg: T) {
-        let store = std::mem::replace(&mut self.callback_store.hooks[index], Box::new(())).downcast::<CallbackStore<T>>().ok().unwrap();
-        let callback = &store.func;
-        (callback)(self, arg);
-        self.callback_store.hooks[index] = store;
-    }
-
+impl ComponentScope {
     pub fn use_callback<T: 'static>(&mut self, callback: Box<dyn Fn(&mut Scope, T) -> ()>) -> CallbackHandle<T> {
         if self.has_init {
             let stored_callback = self.callback_store.get();
@@ -143,18 +172,10 @@ impl Scope {
         }
     }
 
-    pub fn update_state<T: 'static + PartialEq + Clone>(&mut self, index: usize, mapper: Box<dyn FnOnce(&T) -> T>) {
-        let store = self.state_hooks.hooks.get(index).unwrap().downcast_ref::<StateStore<T>>().unwrap() as *const StateStore<T>;
-        unsafe {
-            let ss = store as *mut StateStore<T>;
-            (*ss).request_update_map(self, mapper);
-        };
-    }
-
     pub fn use_state<T: 'static + PartialEq + Clone>(&mut self, default_value: T) -> (T, Rc<dyn Fn(&mut Scope, Box<dyn FnOnce(&T) -> T>)->()>) {
         if self.has_init {
             let store = self.state_hooks.get().downcast_ref::<StateStore<T>>().unwrap();
-            (store.get(), store.update_func.clone())
+            (store.value.clone(), store.update_func.clone())
         } else {
             let store = StateStore::new(default_value.clone(), self.state_hooks.hooks.len());
             let update_func = store.update_func.clone();
@@ -248,16 +269,6 @@ impl Scope {
                     context_node: casted
                 }
             }
-        }
-    }
-
-    pub fn cleanup(&mut self) {
-        let effect_hooks = std::mem::take(&mut self.effect_hooks.hooks);
-        for e in effect_hooks.into_iter() {
-            e.cleanup();
-        }
-        for c in self.context_hooks.hooks.iter() {
-            c.cleanup(self.renderer.clone());
         }
     }
 }

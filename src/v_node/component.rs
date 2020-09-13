@@ -1,9 +1,9 @@
 use downcast_rs::Downcast;
-use crate::scope::{Scope, RefObject};
+use crate::scope::{ComponentScope, Scope, RefObject};
 use crate::v_node::v_node::VNode;
 
 pub trait ComponentModel<VNativeNode, Ref> {
-    fn render(self: &Self, scope: &mut Scope, self_ref: &RefObject<Ref>) -> VNode<VNativeNode>;
+    fn render(self: &Self, scope: &mut ComponentScope, self_ref: &RefObject<Ref>) -> VNode<VNativeNode>;
 }
 
 pub struct VComponentElement<VNativeNode, Model, Ref> where VNativeNode: 'static, Model: ComponentModel<VNativeNode, Ref> {
@@ -31,7 +31,7 @@ impl_downcast!(VComponentElementT<VNativeNode>);
 impl<Model: ComponentModel<VNativeNode, Ref> + 'static, Ref: 'static, VNativeNode: 'static> VComponentElementT<VNativeNode> for VComponentElement<VNativeNode, Model, Ref> {
     fn render(&self, scope: &mut Scope) -> VNode<VNativeNode> {
         scope.mark_start_render();
-        let result = self.component_model.render(scope, &self.ref_object);
+        let result = self.component_model.render(&mut scope.component_scope, &self.ref_object);
         scope.mark_end_render();
         result
     }
