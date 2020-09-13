@@ -31,6 +31,15 @@ macro_rules! map(
      };
 );
 
+macro_rules! enclose {
+    ( ($( $x:ident ),*) $y:expr ) => {
+        {
+            $(let $x = $x.clone();)*
+            $y
+        }
+    };
+}
+
 pub fn ordered_children(children: Vec<VDomNode>) -> Box<VDomNode> {
     Box::new(VDomNode::Fragment(children.into_iter().enumerate().map(|(index, c)| {
         (index.to_string(), c)

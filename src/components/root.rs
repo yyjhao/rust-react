@@ -3,6 +3,7 @@ use crate::scope::{ComponentScope, RefObject, CallbackHandle};
 use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
 use crate::components::task;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 use wasm_bindgen::JsCast;
 use im_rc::Vector;
@@ -16,7 +17,7 @@ pub enum ViewType {
 
 #[derive(PartialEq)]
 pub struct Props {
-    pub tasks: Vector<task::Task>,
+    pub tasks: Vector<Rc<task::Task>>,
     pub on_add_task: CallbackHandle<String>,
     pub on_task_updated: CallbackHandle<(usize, bool)>,
     pub on_view_updated: CallbackHandle<ViewType>,
@@ -106,7 +107,10 @@ impl ComponentModel<VDom, ()> for Props {
                     }
                 }),
                 VDomNode::Fragment(self.tasks.iter().map(|task| {
-                    (task.id.to_string(), h((task.clone(), self.on_task_updated.clone()), std::rc::Rc::new(RefCell::new(None))))
+                    (task.id.to_string(), h(task::Model {
+                        task: task.clone(), 
+                        on_update_task: self.on_task_updated.clone()
+                    }, std::rc::Rc::new(RefCell::new(None))))
                 }).collect()),
             ]),
             ref_object: None

@@ -1,4 +1,5 @@
 use wasm_bindgen::prelude::*;
+use std::rc::Rc;
 use crate::scope::{ComponentScope, RefObject};
 use crate::v_node::{h, ct, ComponentModel};
 use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
@@ -39,7 +40,7 @@ pub struct Model {
 
 impl ComponentModel<VDom, ()> for Model {
     fn render(&self, scope: &mut ComponentScope, _ref_object: &RefObject<()>) -> VDomNode {
-        let (tasks, set_tasks) = scope.use_state(Vector::<task::Task>::new());
+        let (tasks, set_tasks) = scope.use_state(Vector::<Rc<task::Task>>::new());
         let (view_type, set_view_type) = scope.use_state(root::ViewType::All);
         let tasks_2 = tasks.clone();
         let set_tasks_2 = set_tasks.clone();
@@ -86,11 +87,11 @@ impl ComponentModel<VDom, ()> for Model {
                         let mut id_handle = id.try_borrow_mut().unwrap();
                         let current_id = id_handle.unwrap_or(0);
                         *id_handle = Some(current_id + 1);
-                        new_tasks.push_back(task::Task {
+                        new_tasks.push_back(Rc::new(task::Task {
                             id: current_id,
                             name,
                             completed: false,
-                        });
+                        }));
                         set_tasks(scope, Box::new(|_| {new_tasks}))
                     })),
                     on_task_updated: scope.use_callback(Box::new(move |scope, (id, completed)| {
@@ -101,7 +102,7 @@ impl ComponentModel<VDom, ()> for Model {
                                 id: old_task.id,
                                 completed,
                             };
-                            tasks.update(id, new_task)
+                            tasks.update(id, Rc::new(new_task))
                         }))
                     })),
                     on_view_updated: scope.use_callback(Box::new(move |scope, view_type| {
