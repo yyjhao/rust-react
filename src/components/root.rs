@@ -27,11 +27,8 @@ pub struct Props {
 impl ComponentModel<VDom, ()> for Props {
     fn render(&self, scope: &mut ComponentScope, _ref_object: &NilRef) -> VDomNode {
         let (new_task_name, new_task_name_handle) = scope.use_state(String::from(""));
-        let new_task_name_2 = new_task_name.clone();
         let on_add_task = self.on_add_task.clone();
-        let on_view_updated_1 = self.on_view_updated.clone();
-        let on_view_updated_2 = self.on_view_updated.clone();
-        let on_view_updated_3 = self.on_view_updated.clone();
+        let on_view_updated = self.on_view_updated.clone();
 
         hd(VDomElement {
             tag_name: "div", 
@@ -55,17 +52,17 @@ impl ComponentModel<VDom, ()> for Props {
                         ("input", scope.use_callback(move |scope, event: web_sys::Event| {
                             new_task_name_handle.update(scope, event.target().unwrap().dyn_into::<web_sys::HtmlInputElement>().unwrap().value())
                         })),
-                        ("keydown", scope.use_callback(move |scope, event: web_sys::Event| {
+                        ("keydown", scope.use_callback(enclose! { (new_task_name) move |scope, event: web_sys::Event| {
                             let key_code = event.dyn_into::<web_sys::KeyboardEvent>().unwrap().key_code();
                             if key_code == 13 && new_task_name.len() > 0 {
                                 new_task_name_handle.update(scope, String::from(""));
                                 on_add_task.trigger(new_task_name.clone());
                             }
-                        }))
+                        }}))
                     ],
                     children: Box::new(VDomNode::Fragment(vec![])),
                     attributes: map!{
-                        "value" => new_task_name_2.clone(),
+                        "value" => new_task_name.clone(),
                         "placeholder" => String::from("Create a new task")
                     },
                     ref_object: None,
@@ -85,15 +82,15 @@ impl ComponentModel<VDom, ()> for Props {
                     ],
                     attributes: std::collections::HashMap::new(),
                     children: ordered_children(vec![
-                        view_select(false, String::from("All"), scope.use_callback(move |_, _| {
-                            on_view_updated_1.trigger(ViewType::All)
-                        }), self.current_view_type == ViewType::All),
-                        view_select(false, String::from("Completed"), scope.use_callback(move |_, _| {
-                            on_view_updated_2.trigger(ViewType::Completed)
-                        }), self.current_view_type == ViewType::Completed),
-                        view_select(true, String::from("Incomplete"), scope.use_callback(move |_, _| {
-                            on_view_updated_3.trigger(ViewType::Incomplete)
-                        }), self.current_view_type == ViewType::Incomplete),
+                        view_select(false, String::from("All"), scope.use_callback(enclose! { (on_view_updated) move |_, _| {
+                            on_view_updated.trigger(ViewType::All)
+                        }}), self.current_view_type == ViewType::All),
+                        view_select(false, String::from("Completed"), scope.use_callback(enclose! { (on_view_updated) move |_, _| {
+                            on_view_updated.trigger(ViewType::Completed)
+                        }}), self.current_view_type == ViewType::Completed),
+                        view_select(true, String::from("Incomplete"), scope.use_callback(enclose! { (on_view_updated) move |_, _| {
+                            on_view_updated.trigger(ViewType::Incomplete)
+                        }}), self.current_view_type == ViewType::Incomplete),
                     ]),
                     ref_object: None,
                     style: map! {

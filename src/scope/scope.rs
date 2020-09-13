@@ -153,11 +153,12 @@ impl ComponentScope {
         }
     }
 
-    pub fn use_callback_memo<T: 'static, Input: PartialEq + Clone + 'static,>(&mut self, callback: Rc::<dyn Fn(Input, &mut Scope, T) -> ()>, input: Input) -> CallbackHandle<T> {
+    pub fn use_callback_memo<T: 'static, Input: PartialEq + Clone + 'static, F: Fn(Input, &mut Scope, T) -> () + 'static>(&mut self, callback: F, input: Input) -> CallbackHandle<T> {
         let renderer = self.renderer.clone();
+        let callback_rc = Rc::new(callback);
         self.use_memo(move |input| {
             let i = input.clone();
-            let c = callback.clone();
+            let c = callback_rc.clone();
             CallbackHandle {
                 func: Rc::new(move |scope, arg| {
                     c(i.clone(), scope, arg);

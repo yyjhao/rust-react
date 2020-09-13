@@ -54,7 +54,6 @@ impl ComponentModel<VDom, ()> for Model {
             root::ViewType::Completed => "completed"
         }));
         let (style, style_handle) = scope.use_state(style_context::StyleType::Light);
-        let s2 = style.clone();
         ct(style,
             *ordered_children(vec![
                 hd(VDomElement {
@@ -70,7 +69,7 @@ impl ComponentModel<VDom, ()> for Model {
                         }))
                     ],
                     attributes: std::collections::HashMap::new(),
-                    children: ordered_children(vec![ t(match s2 {
+                    children: ordered_children(vec![ t(match style {
                         style_context::StyleType::Light => "light",
                         style_context::StyleType::Dark => "dark"
                     }) ]),
@@ -80,7 +79,7 @@ impl ComponentModel<VDom, ()> for Model {
                 h(root::Props {
                     tasks: tasks_for_display,
                     current_view_type: view_type,
-                    on_add_task: scope.use_callback_memo(Rc::new(|input: (crate::scope::RefObject<usize>, crate::scope::StateHandle<im_rc::vector::Vector<std::rc::Rc<crate::components::task::Task>>>), scope, name| {
+                    on_add_task: scope.use_callback_memo(|input, scope, name| {
                         let (id, tasks_handle) = input;
                         tasks_handle.update_map(scope, |tasks| {
                             let mut new_tasks = tasks.clone();
@@ -94,8 +93,8 @@ impl ComponentModel<VDom, ()> for Model {
                             }));
                             new_tasks
                         })
-                    }), (id.clone(), tasks_handle)),
-                    on_task_updated: scope.use_callback_memo(Rc::new(|tasks_handle: crate::scope::StateHandle<im_rc::vector::Vector<std::rc::Rc<crate::components::task::Task>>>, scope, (id, completed)| {
+                    }, (id, tasks_handle)),
+                    on_task_updated: scope.use_callback_memo(|tasks_handle, scope, (id, completed)| {
                         tasks_handle.update_map(scope, |tasks| {
                             let old_task = tasks.get(id).unwrap();
                             let new_task = task::Task {
@@ -105,7 +104,7 @@ impl ComponentModel<VDom, ()> for Model {
                             };
                             tasks.update(id, Rc::new(new_task))
                         })
-                    }), tasks_handle),
+                    }, tasks_handle),
                     on_view_updated: scope.use_callback(move |scope, view_type| {
                         view_type_handle.update(scope, view_type);
                     })
