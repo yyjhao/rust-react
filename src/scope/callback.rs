@@ -1,3 +1,4 @@
+use wasm_bindgen::prelude::*;
 use std::rc::Rc;
 use std::cell::RefCell;
 use downcast_rs::Downcast;
@@ -26,6 +27,11 @@ pub struct CallbackHandle<T> {
     pub phantom: std::marker::PhantomData<T>,
 }
 
+impl<T> PartialEq for CallbackHandle<T> {
+    fn eq(&self, other: &CallbackHandle<T>) -> bool {
+        self.index == other.index && Rc::ptr_eq(&self.renderer, &other.renderer)
+    }
+}
 
 
 impl<T: 'static> CallbackHandle<T> {

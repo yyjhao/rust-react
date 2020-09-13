@@ -35,6 +35,7 @@ impl<Hook> HookList<Hook> {
 }
 
 pub struct Scope {
+    update_flag: bool,
     pub component_scope: ComponentScope
 }
 
@@ -47,8 +48,8 @@ impl Drop for Scope {
 impl Scope {
     pub fn new(renderer: Rc<RefCell<dyn Renderer>>, context_link: ContextLink) -> Scope {
         Scope {
+            update_flag: false,
             component_scope: ComponentScope {
-                update_flag: false,
                 renderer,
                 context_link,
                 callback_store: HookList::new(),
@@ -74,15 +75,15 @@ impl Scope {
     }
 
     pub fn mark_update(&mut self) {
-        self.component_scope.update_flag = true;
+        self.update_flag = true;
     }
 
     pub fn clear_update(&mut self) {
-        self.component_scope.update_flag = false;
+        self.update_flag = false;
     }
 
     pub fn has_update(&self) -> bool {
-        self.component_scope.update_flag
+        self.update_flag
     }
 
     pub fn effects_iter(&self) -> std::slice::Iter<Rc<dyn EffectStoreT>> {
@@ -136,7 +137,6 @@ impl Scope {
 }
 
 pub struct ComponentScope {
-    update_flag: bool,
     renderer: Rc<RefCell<dyn Renderer>>,
     context_link: ContextLink,
     callback_store: HookList<Box<dyn CallbackStoreT>>,

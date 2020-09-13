@@ -1,3 +1,4 @@
+use wasm_bindgen::prelude::*;
 use crate::v_node::ComponentModel;
 use crate::scope::{ComponentScope, RefObject, CallbackHandle};
 use crate::v_dom_node::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
@@ -12,6 +13,7 @@ pub struct Task {
 
 impl ComponentModel<VDom, ()> for (Task, CallbackHandle<(usize, bool)>) {
     fn render(&self, scope: &mut ComponentScope, _ref_object: &RefObject<()>) -> VDomNode {
+        web_sys::console::log_2(&JsValue::from("render task"), &JsValue::from(self.0.id.to_string()));
         let (task, on_task_updated) = self;
         let on_task_updated_2 = on_task_updated.clone();
         let id = task.id;
@@ -70,6 +72,10 @@ impl ComponentModel<VDom, ()> for (Task, CallbackHandle<(usize, bool)>) {
                 })
             }
         })
+    }
+
+    fn name(&self) -> &'static str {
+        "task"
     }
 }
 

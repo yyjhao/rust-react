@@ -2,8 +2,9 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use crate::scope::{ContextLink, ContextNode,ContextNodeT};
 use crate::v_node::v_node::VNode;
+use crate::v_node::node_comparison::NodeComparisonResult;
 
-pub struct VContext<VNativeNode: 'static, T: 'static> {
+pub struct VContext<VNativeNode: 'static, T: 'static + PartialEq> {
     pub value: T,
     pub children: Box<VNode<VNativeNode>>
 }
@@ -11,10 +12,10 @@ pub struct VContext<VNativeNode: 'static, T: 'static> {
 pub trait VContextT<VNativeNode: 'static> {
     fn to_context_link(self: Box<Self>, parent: ContextLink) -> (Rc<dyn ContextNodeT>, VNode<VNativeNode>);
     fn push_value(self: Box<Self>, context_link: Rc<dyn ContextNodeT>) -> VNode<VNativeNode>;
-    fn is_same_context(self: &Self, store: Rc<dyn ContextNodeT>) -> bool;
+    fn compare(&self, store: Rc<dyn ContextNodeT>) -> NodeComparisonResult;
 }
 
-impl<VNativeNode, T> VContextT<VNativeNode> for VContext<VNativeNode, T> {
+impl<VNativeNode, T: PartialEq> VContextT<VNativeNode> for VContext<VNativeNode, T> {
     fn to_context_link(self: Box<Self>, parent: ContextLink) -> (Rc<dyn ContextNodeT>, VNode<VNativeNode>) {
         (
             Rc::new(ContextNode {
@@ -32,7 +33,14 @@ impl<VNativeNode, T> VContextT<VNativeNode> for VContext<VNativeNode, T> {
         *self.children
     }
 
-    fn is_same_context(self: &Self, context_node: Rc<dyn ContextNodeT>) -> bool {
-        context_node.downcast_rc::<ContextNode<T>>().is_ok()
+    fn compare(self: &Self, context_node: Rc<dyn ContextNodeT>) -> NodeComparisonResult {
+        match context_node.downcast_rc::<ContextNode<T>>() {
+            Ok(same_context) => if same_context.value.try_borrow().unwrap().as_ref().eq(&self.value) {
+                NodeComparisonResult::Equal
+            } else {
+                NodeComparisonResult::SameType
+            }
+            Err(_) => NodeComparisonResult::DifferentType
+        }
     }
 }

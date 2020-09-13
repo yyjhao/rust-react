@@ -1,9 +1,13 @@
 use downcast_rs::Downcast;
 use crate::scope::{ComponentScope, Scope, RefObject};
 use crate::v_node::v_node::VNode;
+use crate::v_node::node_comparison::NodeComparisonResult;
 
-pub trait ComponentModel<VNativeNode, Ref> {
-    fn render(self: &Self, scope: &mut ComponentScope, self_ref: &RefObject<Ref>) -> VNode<VNativeNode>;
+pub trait ComponentModel<VNativeNode, Ref>: PartialEq {
+    fn render(&self, scope: &mut ComponentScope, self_ref: &RefObject<Ref>) -> VNode<VNativeNode>;
+    fn name(&self) -> &'static str {
+        "component"
+    }
 }
 
 pub struct VComponentElement<VNativeNode, Model, Ref> where VNativeNode: 'static, Model: ComponentModel<VNativeNode, Ref> {
@@ -24,7 +28,8 @@ impl<VNativeNode, Model, Ref> VComponentElement<VNativeNode, Model, Ref> where V
 
 pub trait VComponentElementT<VNativeNode: 'static>: Downcast {
     fn render(&self, scope: &mut Scope) -> VNode<VNativeNode>;
-    fn same_component(&self, other: &(dyn VComponentElementT<VNativeNode> + 'static)) -> bool;
+    fn compare(&self, other: &(dyn VComponentElementT<VNativeNode> + 'static)) -> NodeComparisonResult;
+    fn name(&self) -> &'static str;
 }
 impl_downcast!(VComponentElementT<VNativeNode>);
 
@@ -36,7 +41,18 @@ impl<Model: ComponentModel<VNativeNode, Ref> + 'static, Ref: 'static, VNativeNod
         result
     }
 
-    fn same_component(&self, other: &(dyn VComponentElementT<VNativeNode> + 'static)) -> bool {
-        other.downcast_ref::<VComponentElement<VNativeNode, Model, Ref>>().is_some()
+    fn compare(&self, other: &(dyn VComponentElementT<VNativeNode> + 'static)) -> NodeComparisonResult {
+        match other.downcast_ref::<VComponentElement<VNativeNode, Model, Ref>>() {
+            Some(element) => if element.component_model == self.component_model {
+                NodeComparisonResult::Equal
+            } else {
+                NodeComparisonResult::SameType
+            }
+            None => NodeComparisonResult::DifferentType
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        self.component_model.name()
     }
 }

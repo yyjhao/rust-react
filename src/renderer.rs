@@ -1,4 +1,5 @@
-use crate::v_node::{VNode, VComponentElementT, VContextT};
+use wasm_bindgen::prelude::*;
+use crate::v_node::{VNode, VComponentElementT, VContextT, NodeComparisonResult};
 use crate::scope::{Updater, Scope, ContextLink, clone_context_link, ContextNodeT, Renderer, update};
 use std::rc::Rc;
 use std::cell::{RefCell};
@@ -49,18 +50,25 @@ impl<VNativeNode: 'static> ComponentMount<VNativeNode> {
 
     fn update(&mut self, element: Box<dyn VComponentElementT<VNativeNode>>) {
         let mut scope = self.scope.take().unwrap();
-        if element.same_component(self.element.as_ref()) {
-            self.scope = Some(scope);
-            self.element = element;
-            self.native_mount_factory.reset_scanner();
-            self.rerender()
-        } else {
-            self.unmount();
-            scope.cleanup();
-            scope.reset();
-            self.element = element;
-            self.scope = Some(scope);
-            self.rerender();
+        match element.compare(self.element.as_ref()) {
+            NodeComparisonResult::Equal => {
+                self.element = element;
+                self.scope = Some(scope);
+            },
+            NodeComparisonResult::SameType => {
+                self.scope = Some(scope);
+                self.element = element;
+                self.native_mount_factory.reset_scanner();
+                self.rerender();
+            },
+            NodeComparisonResult::DifferentType => {
+                self.unmount();
+                scope.cleanup();
+                scope.reset();
+                self.element = element;
+                self.scope = Some(scope);
+                self.rerender();
+            }
         }
     }
 
@@ -184,16 +192,24 @@ impl<VNativeNode> ContextMount<VNativeNode> {
     }
 
     fn update(&mut self, n: Box<dyn VContextT<VNativeNode>>) {
-        if n.is_same_context(self.context_link.clone()) {
-            let children = n.push_value(self.context_link.clone());
-            self.native_mount_factory.reset_scanner();
-            self.context_link.trigger_update();
-            self.rerender(children);
-        } else {
-            let (context_link, children) = n.to_context_link(self.context_link.parent().clone());
-            self.unmount();
-            self.context_link = context_link;
-            self.rerender(children);
+        match n.compare(self.context_link.clone()) {
+            NodeComparisonResult::Equal => {
+                let children = n.push_value(self.context_link.clone());
+                self.native_mount_factory.reset_scanner();
+                self.rerender(children);
+            },
+            NodeComparisonResult::SameType => {
+                let children = n.push_value(self.context_link.clone());
+                self.native_mount_factory.reset_scanner();
+                self.context_link.trigger_update();
+                self.rerender(children);
+            },
+            NodeComparisonResult::DifferentType => {
+                let (context_link, children) = n.to_context_link(self.context_link.parent().clone());
+                self.unmount();
+                self.context_link = context_link;
+                self.rerender(children);
+            }
         }
     }
 

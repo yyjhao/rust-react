@@ -14,6 +14,7 @@ pub enum ViewType {
     Completed
 }
 
+#[derive(PartialEq)]
 pub struct Props {
     pub tasks: Vector<task::Task>,
     pub on_add_task: CallbackHandle<String>,

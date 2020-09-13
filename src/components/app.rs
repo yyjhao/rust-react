@@ -32,6 +32,7 @@ fn filter_vector<T: Clone, P: Fn(&T) -> bool>(vector: Vector<T>, predicate: P) -
     cur
 }
 
+#[derive(PartialEq)]
 pub struct Model {
 
 }
@@ -54,7 +55,6 @@ impl ComponentModel<VDom, ()> for Model {
             root::ViewType::Completed => "completed"
         }));
         let (style, set_style) = scope.use_state(style_context::StyleType::Light);
-        let s = style.clone();
         let s2 = style.clone();
         ct(style,
             *ordered_children(vec![
