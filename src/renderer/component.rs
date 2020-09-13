@@ -1,4 +1,4 @@
-use crate::v_node::{VComponentElementT, VContextT, NodeComparisonResult};
+use crate::v_node::{VComponentElementT, NodeComparisonResult};
 use crate::scope::{Updater, Scope, ContextLink, Renderer};
 use std::rc::Rc;
 use std::cell::{RefCell};

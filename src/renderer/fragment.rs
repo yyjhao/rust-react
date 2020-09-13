@@ -1,5 +1,5 @@
 use crate::v_node::{VNode};
-use crate::scope::{Updater, ContextLink, clone_context_link, Renderer};
+use crate::scope::{Updater, ContextLink, clone_context_link};
 use std::rc::Rc;
 use std::cell::{RefCell};
 use std::collections::HashMap;

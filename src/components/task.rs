@@ -1,4 +1,3 @@
-use wasm_bindgen::prelude::*;
 use crate::v_node::ComponentModel;
 use crate::scope::{ComponentScope, CallbackHandle, NilRef};
 use crate::dom::{VDomNode, ordered_children, hd, t, VDom, VDomElement};

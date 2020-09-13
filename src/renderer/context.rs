@@ -1,5 +1,5 @@
-use crate::v_node::{VNode, VComponentElementT, VContextT, NodeComparisonResult};
-use crate::scope::{Updater, ContextLink, ContextNodeT, Renderer};
+use crate::v_node::{VNode, VContextT, NodeComparisonResult};
+use crate::scope::{Updater, ContextLink, ContextNodeT};
 use std::rc::Rc;
 use std::cell::{RefCell};
 use crate::renderer::native::NativeMountFactory;

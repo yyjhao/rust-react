@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use components::{app};
 use std::rc::Rc;
 use crate::v_node::VComponentElement;
-use crate::scope::{Updater, RefObject};
+use crate::scope::{Updater};
 
 mod v_node;
 #[macro_use]

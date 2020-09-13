@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 use std::rc::Rc;
-use crate::scope::{ComponentScope, RefObject, NilRef};
+use crate::scope::{ComponentScope, NilRef};
 use crate::v_node::{h, ct, ComponentModel};
 use crate::dom::{VDomNode, ordered_children, hd, t, VDom, VDomElement};
 use im_rc::vector::Vector;

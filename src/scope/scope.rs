@@ -138,7 +138,7 @@ pub struct ComponentScope {
     renderer: Rc<RefCell<dyn Renderer>>,
     context_link: ContextLink,
     state_hooks: HookList<Box<dyn StateStoreT>>,
-    ref_hooks: HookList<Box<RefObjectT>>,
+    ref_hooks: HookList<Box<dyn RefObjectT>>,
     context_hooks: HookList<Rc<dyn ContextConsumerHandleT>>,
     effect_hooks: HookList<Rc<dyn EffectStoreT>>,
     memo_hooks: HookList<Box<dyn MemoStoreT>>,
